@@ -123,7 +123,7 @@ class trainer():
                     batch_data[args.rev_edge_type].edge_index = torch.flipud(edge_index_candidate)
 
             x_dict_ = batch_data.x_dict
-            x_dict_['paper'], x_dict_['author'] = paper_emb, author_emb
+            x_dict_['paper'], x_dict_['author'] = paper_emb.to(args.device), author_emb.to(args.device)
             x_dict_ = model.encoder[0](x_dict_, batch_data.edge_index_dict)
             if args.dataset == 'mag':
                 y_pred = model.predictor[-1](x_dict_['paper']).softmax(dim=1).detach().cpu()
