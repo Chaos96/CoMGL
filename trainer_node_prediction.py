@@ -63,7 +63,8 @@ class trainer():
                 with torch.no_grad():
                     logits = model.predictor[0](paper_emb, author_emb, batch_data[args.edge_type].edge_label_index).squeeze()
                     edge_index_candidate = batch_data[args.edge_type].edge_label_index[:, logits > 0]
-                    batch_data[args.edge_type].edge_index = torch.cat([batch_data[args.edge_type].edge_index, edge_index_candidate], dim=1)
+                    edge_index = batch_data[args.edge_type].edge_index
+                    batch_data[args.edge_type].edge_index = torch.cat([edge_index, edge_index_candidate.to(edge_index)], dim=1)
                     batch_data[args.rev_edge_type].edge_index = torch.flipud(batch_data[args.edge_type].edge_index)
 
             if args.dataset == 'mag':
@@ -118,7 +119,7 @@ class trainer():
                 with torch.no_grad():
                     logits = model.predictor[0](paper_emb, author_emb, batch_data[args.edge_type].edge_label_index).squeeze()
                     edge_index_candidate = batch_data[args.edge_type].edge_label_index[:, logits > 0]
-                    batch_data[args.edge_type].edge_index = edge_index_candidate
+                    batch_data[args.edge_type].edge_index = edge_index_candidate.to(args.device)
                     batch_data[args.rev_edge_type].edge_index = torch.flipud(edge_index_candidate)
 
             x_dict_ = batch_data.x_dict

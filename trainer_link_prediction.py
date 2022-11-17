@@ -88,12 +88,12 @@ class trainer():
                 batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)
 
             z, paper_emb = self.model.aggregator(self.model, batch_data, args.view_dict)
-            author_nid = batch_data['author'].nid
+            author_nid = batch_data['author'].nid.squeeze()
             author_emb = self.author_emb[author_nid].to(args.device)
 
             logits = self.model.predictor[0](paper_emb, author_emb, edge_label_index).sigmoid()
             y = edge_label.cpu().numpy()
-            y_pred = logits.cpu().detach().numpy()
+            y_pred = logits.squeeze().cpu().detach().numpy()
 
         return roc_auc_score(y, y_pred), average_precision_score(y, y_pred)
 

@@ -224,12 +224,9 @@ def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num
     # train_data = get_subgraph(train_data, train_data['paper'].train_mask, view_dict[1:])
     print(f'{train_data[edge_type].edge_index.size(-1)}')
 
-    # del val_data[edge_type]
-    # del val_data[rev_edge_type]
+
     val_data = get_subgraph(val_data, val_data['paper'].val_mask, view_dict)
 
-    # del test_data[edge_type]
-    # del test_data[rev_edge_type]
     test_data = get_subgraph(test_data, test_data['paper'].test_mask, view_dict)
 
     return train_data, val_data, test_data

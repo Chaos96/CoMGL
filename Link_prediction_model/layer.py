@@ -32,7 +32,7 @@ class MLPPredictor(nn.Module):
         u, v = u_emb[edge_index[0]], v_emb[edge_index[1]]
         for i in range(len(self.lins) // 2):
             u, v = self.lins[i](u).relu(), self.lins[i+1](v).relu()
-        z = self.dropout(u * v)
+        z = self.dropout(u + v)
         z = self.lins[-1](z)
         return z
     
@@ -48,8 +48,8 @@ class SelfAttention(nn.Module):
         self._norm_fact = 1 / np.sqrt(dim_k)
 
     def forward(self, model, data, view_dict):
-        [z_1, z_2], _ = model.encode(data.x_dict, data.edge_index_dict)
-        x = torch.dstack([z_1['paper'], z_2['paper']]).transpose(2, 1)   # batch, num_aux_view, dim_in
+        z = model.encode(data.x_dict, data.edge_index_dict)
+        x = torch.dstack([z[0]['paper'], z[1]['paper']]).transpose(2, 1)   # batch, num_aux_view, dim_in
         # n: auxiliary view num
         # x: batch, n, dim_in
         batch, n, dim_in = x.shape
