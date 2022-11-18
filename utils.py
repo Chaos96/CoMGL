@@ -212,10 +212,6 @@ def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num
         train_data['paper'].train_mask = train_mask
         val_data['paper'].val_mask = val_mask
         test_data['paper'].test_mask = test_mask
-        
-        
-    author_node = torch.arange(num_author)
-    train_data.author_set = val_data.author_set = test_data.author_set = author_node
 
     # Eliminate redundant edges to satisfy "inductive" and "strict cold start" scenarios, only for view 1.
     print(f'the num of train data edges: {train_data[edge_type].edge_index.size(-1)}  -->', end="  ")

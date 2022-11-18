@@ -9,6 +9,22 @@
 
 数据集按照`OGB Dataset`格式，放置在`./data/`目录下.
 
+Template class for the `dataset`
+```python
+from torch_geometric.data import HeteroData
+
+data = HeteroData()
+
+# Create node types "paper" and "author" holding a feature matrix:
+data['paper'].x = torch.randn(num_papers, num_paper_features)
+data['author'].x = torch.randn(num_authors, num_authors_features)
+
+# Create an edge type "(author, writes, paper)" and building the
+# graph connectivity:
+data[("paper", "to", "author")].edge_index = ...  # [2, num_edges]
+
+```
+
 ### Data Process
 
 - 满足Inductive 的场景设置，划分train/val/test 数据集，去除各部分数据集Main view中多余的边，但Auxiliary view 的边全部保留；

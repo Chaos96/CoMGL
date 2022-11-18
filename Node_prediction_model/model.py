@@ -60,7 +60,7 @@ class CoMGL(nn.Module):
 
         self.predictor = create_predictor_layer(input_channels=gnn_hidden_channels,
                                                 hidden_channels=mlp_hidden_channels,
-                                                out_channels=[1, args.node_class_num],
+                                                out_channels=[2, args.node_class_num],
                                                 num_layers=mlp_num_layers,
                                                 dropout=dropout,
                                                 predictor_name=predictor_name)

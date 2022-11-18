@@ -82,10 +82,10 @@ class Uncertrainty_estimate(nn.Module):
 
             edge_label_index_aux, edge_label_aux = data[edge_type].edge_label_index, data[edge_type].edge_label
             with torch.no_grad():
-                logits = model.predictor[idx+1](z[idx]['paper'], z[idx][v_type], edge_label_index_aux.to(model.device)).sigmid()
+                logits = model.predictor[idx+1](z[idx]['paper'], z[idx][v_type], edge_label_index_aux.to(model.device)).sigmoid()
 
-            y_pred = (logits > 0.5).type(torch.long)
-            acc = (y_pred.cpu().squeeze() == edge_label_aux).type(torch.float)  # 边的预测准确率
+            y_pred = F.gumbel_softmax(logits, tau=0.01, hard=True)[:, 1]
+            acc = (y_pred.cpu() == edge_label_aux).type(torch.float)  # 边的预测准确率
             weight = torch.ones(num_nodes[1], 1, dtype=torch.float) 
             weight = calculate_weight(weight, acc, edge_label_index_aux.cpu(), loc=1)
             
