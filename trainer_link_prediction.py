@@ -104,8 +104,8 @@ class trainer():
         print(device)
 
         if args.wandb:
-            wandb.init(project='MultiView')
-            wandb.run.name = 'multiview_sage' + time.strftime("-%b-%d-%H:%M", time.localtime())
+            wandb.init(project='CoMGL')
+            wandb.run.name = '' + time.strftime("-%b-%d-%H:%M", time.localtime())
             wandb.config.update(args)
 
         if args.train_on_subgraph:

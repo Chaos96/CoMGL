@@ -3,6 +3,7 @@ import time
 import subprocess
 
 import numpy as np
+from torch_geometric.data import HeteroData
 from torch_geometric.datasets import DBLP, OGB_MAG, HGBDataset
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.transforms import (AddMetaPaths, RandomLinkSplit,
@@ -64,6 +65,9 @@ def load_dataset(args):
         dataset = OGB_MAG(root=args.data_path, preprocess='metapath2vec')
         data = dataset[0]
         del data[('paper', 'cites', 'paper')]
+
+        args.u_type = 'paper'
+        args.v_type = 'author'   # main view 的两种节点类型
         args.node_class_num = data['paper'].y.unique().max() + 1  # 349
 
         data['author'].nid = torch.arange(data['author'].x.size(0)).reshape(-1, 1)
@@ -92,6 +96,9 @@ def load_dataset(args):
     elif args.dataset == 'dblp':
         dataset = DBLP(root=args.data_path)
         data = dataset[0]
+
+        args.u_type = 'paper'
+        args.v_type = 'author'   # main view 的两种节点类型
         args.node_class_num = data['author'].y.unique().max() + 1  # 4
 
         data["conference"].x = torch.ones(data["conference"].num_nodes, 1)
@@ -99,7 +106,44 @@ def load_dataset(args):
         view_1 = [('paper', 'to', 'author'), ('author', 'to', 'paper')]
         view_2 = [('paper', 'to', 'conference'), ('conference', 'to', 'paper')]
         view_3 = [('paper', 'to', 'term'), ('term', 'to', 'paper')]
-        view_dict = view_dict = [view_1, view_2, view_3]
+        args.view_dict = view_dict = [view_1, view_2, view_3]
+    
+    else:
+        data = HeteroData()
+
+        # Create two node types "paper" and "author" holding a feature matrix:
+        num_papers, num_paper_features = 100, 128
+        num_authors, num_authors_features = 100, 128
+        data['user'].x = torch.randn(num_papers, num_paper_features)
+        data['...'].x = torch.randn(num_authors, num_authors_features)
+
+        # Create an edge type "(author, writes, paper)" and building the
+        # graph connectivity:
+        data['author', 'writes', 'paper'].edge_index = ...  # [2, num_edges]
+
+
+        args.u_type = 'user'
+        args.v_type = '...'   # main view 的两种节点类型
+        args.node_class_num = ...   # main view 节点预测类别数
+
+        with torch.no_grad():
+            if features.size(1) != args.embed_size:
+                rand_weight = torch.Tensor(features.size(1), args.embed_size).uniform_(-0.5, 0.5)
+                features = features @ rand_weight
+            # if author_emb.size(1) != args.embed_size:
+            #     rand_weight = torch.Tensor(author_emb.size(1), args.embed_size).uniform_(-0.5, 0.5)
+            #     author_emb = author_emb @ rand_weight
+            # if topic_emb.size(1) != args.embed_size:
+            #     rand_weight = torch.Tensor(topic_emb.size(1), args.embed_size).uniform_(-0.5, 0.5)
+            #     topic_emb = topic_emb @ rand_weight
+            # if institution_emb.size(1) != args.embed_size:
+            #     rand_weight = torch.Tensor(institution_emb.size(1), args.embed_size).uniform_(-0.5, 0.5)
+            #     institution_emb = institution_emb @ rand_weight
+
+        # view_1 = ...
+        # view_2 = ...
+        # view_3 = ...
+        # args.view_dict = view_dict = [view_1, view_2, view_3]
 
     # main view's edge_type
     args.edge_type = edge_type = view_1[0]
