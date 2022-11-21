@@ -10,8 +10,8 @@ import torch.nn.functional as F
 import wandb
 from sklearn.metrics import accuracy_score
 
-from Node_prediction_model.model import *
-from Node_prediction_model.utils import *
+from comgl.model import *
+from comgl.utils import *
 from utils import *
 
 
@@ -25,14 +25,16 @@ class trainer():
         model.encoder.train()
         model.aggregator.train()
         model.predictor.train()
+
+        u_type, v_type = args.u_type, args.v_type
         
         for batch_data in data_loader:  
-            batch_size = batch_data['paper'].batch_size       
+            batch_size = batch_data[u_type].batch_size       
             batch_data = batch_data.to(args.device)
             model.optimizer.zero_grad()
 
             # main view's negative sampling
-            num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict['author'].size(0)]
+            num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[u_type].size(0)]
             edge_label_index, edge_label = batch_get_neg_edges(batch_data[args.edge_type].edge_index, num_nodes=num_nodes)
             batch_data[args.edge_type].edge_label_index, batch_data[args.edge_type].edge_label = edge_label_index, edge_label
 
@@ -40,13 +42,13 @@ class trainer():
             for idx, view in enumerate(args.view_dict[1:]):  
                 edge_type = view[1]
                 v_type = edge_type[2]
-                num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict[v_type].size(0)]
+                num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[v_type].size(0)]
                 batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)        
 
             # 聚合auxiliary views中的paper embedding
             z, paper_emb = model.aggregator(model, batch_data, args.view_dict)
-            author_emb = model.encoder[0](batch_data.x_dict, batch_data.edge_index_dict)['author']
-            author_nid = batch_data['author'].nid.squeeze()
+            author_emb = model.encoder[0](batch_data.x_dict, batch_data.edge_index_dict)[u_type]
+            author_nid = batch_data[args.v_type].nid.squeeze()
             self.author_emb[author_nid] = author_emb.detach().cpu()  # 记录训练阶段的author emb
 
             # auxiliary views' construction loss
@@ -56,7 +58,7 @@ class trainer():
                 v_type = edge_type[2]
                 edge_label_index_aux, edge_label_aux = batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label
                 edge_label_aux = F.one_hot(edge_label_aux.long(), num_classes=2)
-                logits = model.predictor[idx+1](z[idx]['paper'], z[idx][v_type], edge_label_index_aux.to(args.device))
+                logits = model.predictor[idx+1](z[idx][u_type], z[idx][v_type], edge_label_index_aux.to(args.device))
                 edge_loss_aux += F.binary_cross_entropy_with_logits(logits, edge_label_aux.to(logits))
 
             # candidate edges generate
@@ -68,10 +70,10 @@ class trainer():
 
             if args.dataset == 'mag':
                 logits = model.predictor[-1](paper_emb)
-                y = batch_data['paper'].y
+                y = batch_data[u_type].y
             elif args.dataset == 'dblp':
                 logits = model.predictor[-1](author_emb)
-                y = batch_data['author'].y
+                y = batch_data[u_type].y
 
             label_loss = F.cross_entropy(logits[:batch_size], y[:batch_size].to(args.device))
 
@@ -92,16 +94,18 @@ class trainer():
         self.model.encoder.eval()
         self.model.predictor.eval()
 
+        u_type, v_type = args.u_type, args.v_type
+
         with torch.no_grad():
             acc = []
             for batch_data in data_loader:
                 del batch_data[args.edge_type]   
                 del batch_data[args.rev_edge_type]   # 测试阶段删除main view 边信息
-                batch_size = batch_data['paper'].batch_size  
+                batch_size = batch_data[u_type].batch_size  
                 batch_data = batch_data.to(args.device)
 
                 # candidate edges set of main view
-                num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict['author'].size(0)]
+                num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[u_type].size(0)]
                 num_edges = 1000
                 edge_index_candidate = get_candidate_edges(num_nodes=num_nodes, num_edges=num_edges)    # main view 
 
@@ -109,11 +113,11 @@ class trainer():
                 for idx, view in enumerate(args.view_dict[1:]):  
                     edge_type = view[1]
                     v_type = edge_type[2]
-                    num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict[v_type].size(0)]
+                    num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[v_type].size(0)]
                     batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)       
 
                 z, paper_emb = model.aggregator(model, batch_data, args.view_dict)
-                author_nid = batch_data['author'].nid.squeeze()
+                author_nid = batch_data[v_type].nid.squeeze()
                 author_emb = self.author_emb[author_nid].to(args.device)
 
                 if args.generate_edges:
@@ -124,14 +128,14 @@ class trainer():
                     batch_data[args.rev_edge_type].edge_index = torch.flipud(edge_index)
 
                 x_dict_ = batch_data.x_dict
-                x_dict_['paper'], x_dict_['author'] = paper_emb.to(args.device), author_emb.to(args.device)
+                x_dict_[u_type], x_dict_[v_type] = paper_emb.to(args.device), author_emb.to(args.device)
                 x_dict_ = model.encoder[0](x_dict_, batch_data.edge_index_dict)
                 if args.dataset == 'mag':
-                    y_pred = model.predictor[-1](x_dict_['paper']).softmax(dim=1).detach().cpu()
-                    y = batch_data['paper'].y.cpu()
+                    y_pred = model.predictor[-1](x_dict_[u_type]).softmax(dim=1).detach().cpu()
+                    y = batch_data[u_type].y.cpu()
                 elif args.dataset == 'dblp':
-                    y_pred = model.predictor[-1](x_dict_['author']).softmax(dim=1).detach().cpu()
-                    y = batch_data['author'].y.cpu()
+                    y_pred = model.predictor[-1](x_dict_[v_type]).softmax(dim=1).detach().cpu()
+                    y = batch_data[v_type].y.cpu()
                 acc.append(accuracy_score(y[:batch_size], y_pred.argmax(dim=1)[:batch_size]))
         acc = np.array(acc)
         return acc.mean()

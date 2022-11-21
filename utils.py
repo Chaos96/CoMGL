@@ -66,8 +66,6 @@ def load_dataset(args):
         data = dataset[0]
         del data[('paper', 'cites', 'paper')]
 
-        args.u_type = 'paper'
-        args.v_type = 'author'   # main view 的两种节点类型
         args.node_class_num = data['paper'].y.unique().max() + 1  # 349
 
         data['author'].nid = torch.arange(data['author'].x.size(0)).reshape(-1, 1)
@@ -91,14 +89,16 @@ def load_dataset(args):
 
         view_2 = [('institution', 'metapath_1', 'paper'), ('paper', 'metapath_0', 'institution')]  # Generate new edge type around paper
         args.view_dict = view_dict = [view_1, view_2, view_3]
-        author_emb = data['author'].x.clone()    # record authors'embedding during training for inductive settings
+        args.u_type = data.u_type = 'paper'
+        args.v_type = data.v_type = 'author'   # main view 的两种节点类型
+        v_emb = data['author'].x.clone()    # record authors'embedding during training for inductive settings
 
     elif args.dataset == 'dblp':
         dataset = DBLP(root=args.data_path)
         data = dataset[0]
 
-        args.u_type = 'paper'
-        args.v_type = 'author'   # main view 的两种节点类型
+        args.u_type = data.u_type = 'paper'
+        args.v_type = data.v_type = 'author'   # main view 的两种节点类型
         args.node_class_num = data['author'].y.unique().max() + 1  # 4
 
         data["conference"].x = torch.ones(data["conference"].num_nodes, 1)
@@ -112,44 +112,58 @@ def load_dataset(args):
         data = HeteroData()
 
         # Create two node types "paper" and "author" holding a feature matrix:
-        num_papers, num_paper_features = 100, 128
-        num_authors, num_authors_features = 100, 128
-        data['user'].x = torch.randn(num_papers, num_paper_features)
-        data['...'].x = torch.randn(num_authors, num_authors_features)
+        num_openid, num_openid_features = 10000, 128
+        num_project, num_project_features = 8000, 128
+        num_institution, num_institution_features = 7000, 128
+        num_qimei36, num_qimei36_features = 4000, 128
+        num_uin, num_uin_features = 6000, 128
+        data['openid'].x = torch.randn(num_openid, num_openid_features)
+        data['project'].x = torch.randn(num_project, num_project_features)
+        data['institution'].x = torch.rand(num_institution, num_institution_features)
+        data['qimei36'].x = torch.randn(num_qimei36, num_qimei36_features)
+        data['uin'].x = torch.randn(num_uin, num_uin_features)
 
         # Create an edge type "(author, writes, paper)" and building the
         # graph connectivity:
-        data['author', 'writes', 'paper'].edge_index = ...  # [2, num_edges]
+        # ***** 此处可换为现有的真实邻接矩阵 ***** 
+        num_edges = 20000
+        data['openid', 'to', 'project'].edge_index = torch.vstack([torch.randint(0, num_openid, size=(num_edges,)), torch.randint(0, num_project, size=(num_edges,))])  # [2, num_edges]
+        data['project', 'to', 'institution'].edge_index = torch.vstack([torch.randint(0, num_project, size=(num_edges,)), torch.randint(0, num_institution, size=(num_edges,))]) 
+        data['openid', 'to', 'qimei36'].edge_index = torch.vstack([torch.randint(0, num_openid, size=(num_edges,)), torch.randint(0, num_qimei36, size=(num_edges,))]) 
+        data['openid', 'to', 'uin'].edge_index = torch.vstack([torch.randint(0, num_openid, size=(num_edges,)), torch.randint(0, num_uin, size=(num_edges,))]) 
 
+        # view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid'), ('project', 'to', 'institution'), ('institution', 'to', 'project')]
+        view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid')]
+        view_2 = [('openid', 'to', 'qimei36'), ('qimei36', 'to', 'openid')]
+        view_3 = [('openid', 'to', 'uin'), ('uin', 'to', 'openid')]
+        args.view_dict = view_dict = [view_1, view_2, view_3]
 
-        args.u_type = 'user'
-        args.v_type = '...'   # main view 的两种节点类型
-        args.node_class_num = ...   # main view 节点预测类别数
+        for view in view_dict:
+            data[view[1]].edge_index = torch.flipud(data.edge_index_dict[view[0]]) # directed -> undirected
 
+        args.u_type = data.u_type = 'openid'
+        args.v_type = data.v_type = 'project'   # main view 的两种节点类型
+        args.node_class_num = 2   # main view 节点预测类别数
+
+        # 保持原始特征维度与后续auxiliary views的表征维度一致，对预测结果影响待定...
         with torch.no_grad():
-            if features.size(1) != args.embed_size:
-                rand_weight = torch.Tensor(features.size(1), args.embed_size).uniform_(-0.5, 0.5)
-                features = features @ rand_weight
-            # if author_emb.size(1) != args.embed_size:
-            #     rand_weight = torch.Tensor(author_emb.size(1), args.embed_size).uniform_(-0.5, 0.5)
-            #     author_emb = author_emb @ rand_weight
-            # if topic_emb.size(1) != args.embed_size:
-            #     rand_weight = torch.Tensor(topic_emb.size(1), args.embed_size).uniform_(-0.5, 0.5)
-            #     topic_emb = topic_emb @ rand_weight
-            # if institution_emb.size(1) != args.embed_size:
-            #     rand_weight = torch.Tensor(institution_emb.size(1), args.embed_size).uniform_(-0.5, 0.5)
-            #     institution_emb = institution_emb @ rand_weight
+            for item in data.metadata()[0]:
+                if data.x_dict[item].size(1) != args.embed_size:
+                    rand_weight = torch.Tensor(data.x_dict[item].size(1), args.embed_size).uniform_(-0.5, 0.5)
+                    data[item].x = data.x_dict[item] @ rand_weight
+        
+        data[args.v_type].nid = torch.arange(data[args.v_type].x.size(0)).reshape(-1, 1)
+        v_emb = data[args.v_type].x.clone()  # record authors'embedding during training for inductive settings
 
-        # view_1 = ...
-        # view_2 = ...
-        # view_3 = ...
-        # args.view_dict = view_dict = [view_1, view_2, view_3]
+        
+        
 
     # main view's edge_type
     args.edge_type = edge_type = view_1[0]
     args.rev_edge_type = rev_edge_type = view_1[1]   
     args.metadata = data.metadata()
 
+    print(data)
     train_data, val_data, test_data = get_data_split(data, edge_type, rev_edge_type, view_dict)
 
     train_data = add_delete_edges(train_data, view_dict=view_dict, noise_ratio=args.noise_ratio)
@@ -158,30 +172,30 @@ def load_dataset(args):
         train_loader = NeighborLoader(
             train_data,
             # Sample 30 neighbors for each node and edge type for 2 iterations
-            num_neighbors={key: [15] * 2 for key in train_data.edge_types},
+            num_neighbors={key: [3] * 2 for key in train_data.edge_types},
             # Use a batch size of 128 for sampling training nodes of type paper
-            batch_size=1024 * 5,
-            input_nodes=('paper', train_data['paper'].train_mask),
+            batch_size=10 ,
+            input_nodes=(args.u_type, train_data[args.u_type].train_mask),
         )
 
-        mask = torch.ones(val_data['paper'].x.size(0), dtype=torch.bool)
+        mask = torch.ones(val_data[args.u_type].x.size(0), dtype=torch.bool)
         val_loader = NeighborLoader(
             val_data,
             num_neighbors={key: [15] * 2 for key in val_data.edge_types},
             batch_size=1024,
-            input_nodes=('paper', mask),
+            input_nodes=(args.u_type, mask),
         )
 
-        mask = torch.ones(test_data['paper'].x.size(0), dtype=torch.bool)
+        mask = torch.ones(test_data[args.u_type].x.size(0), dtype=torch.bool)
         test_loader = NeighborLoader(
             test_data,
             num_neighbors={key: [15] * 2 for key in test_data.edge_types},
             batch_size=1024,
-            input_nodes=('paper', mask),
+            input_nodes=(args.u_type, mask),
         )
-        return train_loader, val_loader, test_loader, author_emb
+        return train_loader, val_loader, test_loader, v_emb
 
-    return train_data, val_data, test_data, author_emb
+    return train_data, val_data, test_data, v_emb
 
 def filter_edges(edge_index, node_mask, loc=0):
     node_set = node_mask.nonzero()
@@ -208,7 +222,7 @@ def add_delete_edges(data, view_dict, noise_ratio):
                 data.edge_index_dict[edge_type] = edge_index[:, perm]
             
             else:
-                loc = 0 if edge_type[0]=='paper' else 1
+                loc = 0 if edge_type[0]==data.u_type else 1
                 paper_set = torch.unique(edge_index[loc]).numpy()
                 v_type = edge_type[2] if loc==0 else edge_type[0]
                 v_set = np.arange(data.x_dict[v_type].size(0))
@@ -218,55 +232,57 @@ def add_delete_edges(data, view_dict, noise_ratio):
     return data
 
 def get_subgraph(data, mask, view_dict):
-    data['paper'].x = data.x_dict['paper'][mask]
+    u_type = data.u_type  
+    data[u_type].x = data.x_dict[u_type][mask]
     for view in view_dict:
         for edge_type in view:
-            if edge_type[0] == 'paper':
-                v_mask = torch.ones(data.x_dict[edge_type[2]].size(0), dtype=torch.bool)
-                subset = (mask, v_mask)
+            if edge_type[0] == u_type:
+                v_set = torch.arange(data.x_dict[edge_type[2]].size(0))  # 只对paper/user 节点进行分割，其他节点全部保留
+                subset = (mask.nonzero(), v_set)
             else:
-                u_mask = torch.ones(data.x_dict[edge_type[0]].size(0), dtype=torch.bool)
-                subset = (u_mask, mask)
+                u_set = torch.arange(data.x_dict[edge_type[0]].size(0))
+                subset = (u_set, mask.nonzero())
             edge_index, _ = bipartite_subgraph(subset, data.edge_index_dict[edge_type], relabel_nodes=True)
             data[edge_type].edge_index = edge_index
-    
+
     return data
 
 def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num_val=0.1, num_test=0.1):
+    u_type, v_type = data.u_type, data.v_type
     train_data = data.clone()
     val_data = data.clone()
     test_data = data.clone()
  
-    num_paper = data['paper'].x.size(0)
-    num_author = data['author'].x.size(0)
+    num_u = data[u_type].x.size(0)
+    num_v = data[v_type].x.size(0)
     
-    if not hasattr(data['paper'], 'train_mask'):
+    if not hasattr(data[u_type], 'train_mask'):
         print('Manual division ')
-        num_train = int(num_train * num_paper)
-        num_val = int(num_val * num_paper)
+        num_train = int(num_train * num_u)
+        num_val = int(num_val * num_u)
         
-        perm = torch.randperm(num_paper)
-        train_mask = torch.zeros(num_paper, dtype=torch.bool)
-        val_mask = torch.zeros(num_paper, dtype=torch.bool)
-        test_mask = torch.zeros(num_paper, dtype=torch.bool)
+        perm = torch.randperm(num_u)
+        train_mask = torch.zeros(num_u, dtype=torch.bool)
+        val_mask = torch.zeros(num_u, dtype=torch.bool)
+        test_mask = torch.zeros(num_u, dtype=torch.bool)
         train_mask[perm[:num_train]] = True       
         val_mask[perm[num_train:num_train+num_val]] = True
         test_mask[perm[num_train+num_val:]] = True
 
-        train_data['paper'].train_mask = train_mask
-        val_data['paper'].val_mask = val_mask
-        test_data['paper'].test_mask = test_mask
+        train_data[u_type].train_mask = train_mask
+        val_data[u_type].val_mask = val_mask
+        test_data[u_type].test_mask = test_mask
 
     # Eliminate redundant edges to satisfy "inductive" and "strict cold start" scenarios, only for view 1.
     print(f'the num of train data edges: {train_data[edge_type].edge_index.size(-1)}  -->', end="  ")
-    train_data[edge_type].edge_index = filter_edges(train_data[edge_type].edge_index, train_data['paper'].train_mask, 0)
-    train_data[rev_edge_type].edge_index = filter_edges(train_data[rev_edge_type].edge_index, train_data['paper'].train_mask, 1)
+    train_data[edge_type].edge_index = filter_edges(train_data[edge_type].edge_index, train_data[u_type].train_mask, 0)
+    train_data[rev_edge_type].edge_index = filter_edges(train_data[rev_edge_type].edge_index, train_data[u_type].train_mask, 1)
     # train_data = get_subgraph(train_data, train_data['paper'].train_mask, view_dict[1:])
     print(f'{train_data[edge_type].edge_index.size(-1)}')
 
 
-    val_data = get_subgraph(val_data, val_data['paper'].val_mask, view_dict)
+    val_data = get_subgraph(val_data, val_data[u_type].val_mask, view_dict)
 
-    test_data = get_subgraph(test_data, test_data['paper'].test_mask, view_dict)
+    test_data = get_subgraph(test_data, test_data[u_type].test_mask, view_dict)
 
     return train_data, val_data, test_data

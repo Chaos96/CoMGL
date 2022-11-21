@@ -7,8 +7,8 @@ import torch.nn.functional as F
 import wandb
 from sklearn.metrics import accuracy_score, average_precision_score, precision_score, roc_auc_score
 
-from Link_prediction_model.model import *
-from Link_prediction_model.utils import *
+from comgl.model import *
+from comgl.utils import *
 from utils import *
 
 
@@ -23,26 +23,28 @@ class trainer():
         model.encoder.train()
         model.aggregator.train()
         model.predictor.train()
+
+        u_type, v_type = args.u_type, args.v_type
         
         for batch_data in data_loader:         
-            batch_size = batch_data['paper'].batch_size    
+            batch_size = batch_data[args.u_type].batch_size    
             batch_data = batch_data.to(args.device)
             model.optimizer.zero_grad()
 
             # negative sampling
-            num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict['author'].size(0)]
+            num_nodes = [batch_data.x_dict[args.u_type].size(0), batch_data.x_dict[args.v_type].size(0)]
             batch_data[args.edge_type].edge_label_index, batch_data[args.edge_type].edge_label = batch_get_neg_edges(batch_data[args.edge_type].edge_index, num_nodes=num_nodes)    # main view 
 
             # auxiliary views negative sampling
             for idx, view in enumerate(args.view_dict[1:]): 
                 edge_type = view[1]
                 v_type = edge_type[2]
-                num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict[v_type].size(0)]
+                num_nodes = [batch_data.x_dict[args.u_type].size(0), batch_data.x_dict[v_type].size(0)]
                 batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)  
 
             z, paper_emb = self.model.aggregator(self.model, batch_data, args.view_dict)
-            author_emb = model.encoder[0](batch_data.x_dict, batch_data.edge_index_dict)['author']
-            author_nid = batch_data['author'].nid.squeeze()
+            author_emb = model.encoder[0](batch_data.x_dict, batch_data.edge_index_dict)[args.v_type]
+            author_nid = batch_data[args.v_type].nid.squeeze()
             self.author_emb[author_nid] = author_emb.detach().cpu()  # 记录训练阶段的author emb
 
             # auxiliary views' construction loss
@@ -50,14 +52,15 @@ class trainer():
             for idx, view in enumerate(args.view_dict[1:]): 
                 edge_type = view[1]
                 v_type = edge_type[2]
-                num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict[v_type].size(0)]
-                edge_label_index_aux, edge_label_aux = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)
-                logits = self.model.predictor[idx+1](z[idx]['paper'], z[idx][v_type], edge_label_index_aux.to(args.device))
-                edge_loss_aux += F.binary_cross_entropy_with_logits(logits.squeeze(), edge_label_aux.to(logits))
+                edge_label_index_aux, edge_label_aux = batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label
+                edge_label_aux = F.one_hot(edge_label_aux.long(), num_classes=2)
+                logits = model.predictor[idx+1](z[idx][u_type], z[idx][v_type], edge_label_index_aux.to(args.device))
+                edge_loss_aux += F.binary_cross_entropy_with_logits(logits, edge_label_aux.to(logits))
 
             edge_label_index, edge_label = batch_data[args.edge_type].edge_label_index, batch_data[args.edge_type].edge_label
             logits = self.model.predictor[0](paper_emb, author_emb, edge_label_index)
-            edge_loss = F.binary_cross_entropy_with_logits(logits.squeeze()[:batch_size], edge_label.to(logits)[:batch_size])
+            edge_label = F.one_hot(edge_label.long(), num_classes=2)
+            edge_loss = F.binary_cross_entropy_with_logits(logits[:batch_size], edge_label.to(logits)[:batch_size])
             loss = 0.5 * edge_loss_aux + edge_loss
             loss.backward()
             if args.grad_clip_norm > 0:
@@ -76,19 +79,19 @@ class trainer():
         self.model.predictor.eval()
 
         for batch_data in data_loader:
-            batch_size = batch_data['paper'].batch_size  
+            batch_size = batch_data[args.u_type].batch_size  
             batch_data = batch_data.to(args.device)
 
-            num_nodes = [batch_data.x_dict['paper'].size(-1), batch_data.x_dict['author'].size(-1)]
+            num_nodes = [batch_data.x_dict[args.u_type].size(-1), batch_data.x_dict[args.v_type].size(-1)]
             edge_label_index, edge_label = batch_get_neg_edges(batch_data[args.edge_type].edge_index[:, :1000], num_nodes=num_nodes)
             for idx, view in enumerate(args.view_dict[1:]):  # auxiliary views
                 edge_type = view[1]
                 v_type = edge_type[2]
-                num_nodes = [batch_data.x_dict['paper'].size(0), batch_data.x_dict[v_type].size(0)]
+                num_nodes = [batch_data.x_dict[args.u_type].size(0), batch_data.x_dict[v_type].size(0)]
                 batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)
 
             z, paper_emb = self.model.aggregator(self.model, batch_data, args.view_dict)
-            author_nid = batch_data['author'].nid.squeeze()
+            author_nid = batch_data[args.v_type].nid.squeeze()
             author_emb = self.author_emb[author_nid].to(args.device)
 
             logits = self.model.predictor[0](paper_emb, author_emb, edge_label_index).sigmoid()

@@ -8,7 +8,7 @@ class BaseOptions():
         parser = argparse.ArgumentParser()
         parser.add_argument('--exp_mode', type=str, default='link_prediction', choices=['link_prediction', 
         'node_prediction'])
-        parser.add_argument('--dataset', type=str, default='mag', choices=['dblp', 'mag'])
+        parser.add_argument('--dataset', type=str, default='openid', choices=['dblp', 'mag', 'openid'])
         parser.add_argument('--data_path', type=str, default='~/public_data/pyg_data/')
         parser.add_argument('--auxiliary_view_num', type=int, default=2)
         parser.add_argument('--train_on_subgraph', type=bool, default=True)
@@ -28,7 +28,7 @@ class BaseOptions():
         parser.add_argument('--embed_size', type=int, default=128)
         parser.add_argument('--predictor_name', type=str, default='MLP')
         parser.add_argument('--gnn_num_layers', type=int, default=2)
-        parser.add_argument('--aggregator_name', type=str, default='Attentaion', choices=['Uncertainty', 'Attentaion', 'Add'])
+        parser.add_argument('--aggregator_name', type=str, default='Uncertainty', choices=['Uncertainty', 'Attention', 'Add'])
         parser.add_argument('--mlp_num_layers', type=int, default=2)
         parser.add_argument('--gnn_hidden_channels', type=int, default=128)
         parser.add_argument('--agg_hidden_channels', type=int, default=128)
