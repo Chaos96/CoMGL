@@ -158,9 +158,6 @@ class trainer():
 
     def main(self):
         args = self.args   
-        # args.device = device = torch.device(f'cuda:{args.cuda_idx}' if torch.cuda.is_available() else torch.device('cpu'))
-        args.device = device = torch.device('cpu')
-        print(device)
 
         if args.wandb:
             wandb.init(project='MultiView')

@@ -5,7 +5,7 @@ import subprocess
 import numpy as np
 import pandas as pd
 from torch_geometric.data import HeteroData
-from torch_geometric.datasets import DBLP, OGB_MAG, HGBDataset
+from torch_geometric.datasets import DBLP, OGB_MAG
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.transforms import (AddMetaPaths, RandomLinkSplit,
                                         RandomNodeSplit)
@@ -204,7 +204,7 @@ def load_dataset(args):
             # Sample 30 neighbors for each node and edge type for 2 iterations
             num_neighbors={key: [3] * 2 for key in train_data.edge_types},
             # Use a batch size of 128 for sampling training nodes of type paper
-            batch_size=10 ,
+            batch_size=20 ,
             input_nodes=(args.u_type, train_data[args.u_type].train_mask),
         )
 

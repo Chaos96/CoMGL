@@ -26,6 +26,10 @@ def main():
         gpus_to_use = assign_free_gpus()
         args.cuda_idx = int(gpus_to_use[0])
     set_seed(args)
+    args.device = device = torch.device(f'cuda:{args.cuda_idx}' if torch.cuda.is_available() else torch.device('cpu'))
+        # args.device = device = torch.device('cpu')
+    print(device)
+    
     if args.exp_mode == 'link_prediction':
         from trainer_link_prediction import trainer
     elif args.exp_mode == 'node_prediction':
