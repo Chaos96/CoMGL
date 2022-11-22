@@ -181,7 +181,7 @@ class trainer():
             agg_hidden_channels=args.agg_hidden_channels,
             mlp_hidden_channels=args.mlp_hidden_channels,  
             optimizer_name=args.optimizer,
-            device=device
+            device=args.device
         )
 
         self.model = model

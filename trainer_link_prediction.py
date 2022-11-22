@@ -102,9 +102,6 @@ class trainer():
 
     def main(self):
         args = self.args   
-        args.device = device = torch.device(f'cuda:{args.cuda_idx}' if torch.cuda.is_available() else torch.device('cpu'))
-        # args.device = device = torch.device('cpu')
-        print(device)
 
         if args.wandb:
             wandb.init(project='CoMGL')
@@ -128,7 +125,7 @@ class trainer():
             agg_hidden_channels=args.agg_hidden_channels,
             mlp_hidden_channels=args.mlp_hidden_channels,  
             optimizer_name=args.optimizer,
-            device=device
+            device=args.device
         )
 
         self.model = model
