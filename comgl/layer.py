@@ -64,7 +64,7 @@ class SelfAttention(nn.Module):
         dist = torch.softmax(dist, dim=-1)  # batch, n, n
 
         att = torch.bmm(dist, v).sum(axis=1)
-        return att
+        return att, att
 
 
 class Uncertrainty_estimate(nn.Module):
@@ -78,7 +78,10 @@ class Uncertrainty_estimate(nn.Module):
 
         data.x_dict_ = data.x_dict.copy()
         for idx, view in enumerate(view_dict[1:]): 
-            edge_type = view[1]
+            if u_type == 'paper':
+                edge_type = view[1]
+            else:
+                edge_type = view[0]
             v_type = edge_type[2]
             num_nodes = [data.x_dict[u_type].size(0), data.x_dict[v_type].size(0)]
 

@@ -118,6 +118,7 @@ def load_dataset(args):
         num_qimei36, num_qimei36_features = 4000, 128
         num_uin, num_uin_features = 6000, 128
         data['openid'].x = torch.randn(num_openid, num_openid_features)
+        data['openid'].y = torch.randint(0, 2, (num_openid, ))
         data['project'].x = torch.randn(num_project, num_project_features)
         data['institution'].x = torch.rand(num_institution, num_institution_features)
         data['qimei36'].x = torch.randn(num_qimei36, num_qimei36_features)
@@ -154,9 +155,6 @@ def load_dataset(args):
         
         data[args.v_type].nid = torch.arange(data[args.v_type].x.size(0)).reshape(-1, 1)
         v_emb = data[args.v_type].x.clone()  # record authors'embedding during training for inductive settings
-
-        
-        
 
     # main view's edge_type
     args.edge_type = edge_type = view_1[0]
