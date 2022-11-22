@@ -3,6 +3,7 @@ import time
 import subprocess
 
 import numpy as np
+import pandas as pd
 from torch_geometric.data import HeteroData
 from torch_geometric.datasets import DBLP, OGB_MAG, HGBDataset
 from torch_geometric.loader import NeighborLoader
@@ -111,12 +112,45 @@ def load_dataset(args):
     else:
         data = HeteroData()
 
-        # Create two node types "paper" and "author" holding a feature matrix:
-        num_openid, num_openid_features = 10000, 128
-        num_project, num_project_features = 8000, 128
-        num_institution, num_institution_features = 7000, 128
-        num_qimei36, num_qimei36_features = 4000, 128
-        num_uin, num_uin_features = 6000, 128
+        path_1 = 'data/openid/openid2projectid.csv'
+        path_2 = 'data/openid/openid2q36.csv'
+        path_3 = 'data/openid/openid2uin.csv'
+
+        data_1 = pd.read_csv(path_1)
+        data_2 = pd.read_csv(path_2)
+        data_3 = pd.read_csv(path_3)
+        openid_index, openid_map = pd.factorize(data_1['open_id'])
+        num_openid_1 = len(openid_map)
+        project_index, project_map = pd.factorize(data_1['proj_id'])
+        num_project = len(project_map)
+        org_index, org_map = pd.factorize(data_1['org_id'])
+        num_institution = len(org_map)
+        openid2project_edge_index = np.vstack([openid_index, project_index])
+        openid2project_edge_index = torch.tensor(openid2project_edge_index, dtype=torch.long)
+        project2org_edge_index = np.vstack([project_index, org_index])
+        project2org_edge_index = torch.tensor(project2org_edge_index, dtype=torch.long)
+
+        openid_index, openid_map = pd.factorize(data_2['open_id'])
+        num_openid_2 = len(openid_map)
+        qimei36_index, qimei36_map = pd.factorize(data_2['qimei36'])
+        num_qimei36 = len(qimei36_map)
+        openid2qimei36_edge_index = np.vstack([openid_index, qimei36_index])
+        openid2qimei36_edge_index = torch.tensor(openid2qimei36_edge_index, dtype=torch.long)
+
+        openid_index, openid_map = pd.factorize(data_3['open_id'])
+        num_openid_3 = len(openid_map)
+        uin_index, uin_map = pd.factorize(data_3['uin'])
+        num_uin = len(uin_map)
+        openid2uin_edge_index = np.vstack([openid_index, uin_index])
+        openid2uin_edge_index = torch.tensor(openid2uin_edge_index, dtype=torch.long)
+
+        num_openid = max([num_openid_1, num_openid_2, num_openid_3])
+
+        num_openid_features = 128
+        num_project_features = 128
+        num_institution_features = 128
+        num_qimei36_features = 128
+        num_uin_features = 128
         data['openid'].x = torch.randn(num_openid, num_openid_features)
         data['openid'].y = torch.randint(0, 2, (num_openid, ))
         data['project'].x = torch.randn(num_project, num_project_features)
@@ -126,12 +160,10 @@ def load_dataset(args):
 
         # Create an edge type "(author, writes, paper)" and building the
         # graph connectivity:
-        # ***** 此处可换为现有的真实邻接矩阵 ***** 
-        num_edges = 20000
-        data['openid', 'to', 'project'].edge_index = torch.vstack([torch.randint(0, num_openid, size=(num_edges,)), torch.randint(0, num_project, size=(num_edges,))])  # [2, num_edges]
-        data['project', 'to', 'institution'].edge_index = torch.vstack([torch.randint(0, num_project, size=(num_edges,)), torch.randint(0, num_institution, size=(num_edges,))]) 
-        data['openid', 'to', 'qimei36'].edge_index = torch.vstack([torch.randint(0, num_openid, size=(num_edges,)), torch.randint(0, num_qimei36, size=(num_edges,))]) 
-        data['openid', 'to', 'uin'].edge_index = torch.vstack([torch.randint(0, num_openid, size=(num_edges,)), torch.randint(0, num_uin, size=(num_edges,))]) 
+        data['openid', 'to', 'project'].edge_index = openid2project_edge_index  # [2, num_edges]
+        data['project', 'to', 'institution'].edge_index = project2org_edge_index
+        data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
+        data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
 
         # view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid'), ('project', 'to', 'institution'), ('institution', 'to', 'project')]
         view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid')]
