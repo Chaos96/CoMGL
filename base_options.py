@@ -20,7 +20,7 @@ class BaseOptions():
         parser.add_argument('--runs', type=int, default=1)  
         parser.add_argument('--epochs', type=int, default=150)
         parser.add_argument('--lr', type=float, default=0.001)
-        parser.add_argument('--batch_size', type=int, default=64 * 1024)    
+        parser.add_argument('--batch_size', type=int, default=1024)    
         parser.add_argument('--noise_ratio', type=float, default=0.2)     # auxiliary views' info noise ratio      
         parser.add_argument('--eval_steps', type=int, default=1)
         parser.add_argument('--eval_metric', type=str, default='ROC-AUC', choices=['ROC-AUC', 'hits', 'mrr', 'recall_my@0.8', 'recall_my@1', 'recall_my@1.25', 'recall_my@0'])

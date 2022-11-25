@@ -166,11 +166,6 @@ def load_dataset(args):
         data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
         data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
 
-        # data['openid', 'to', 'project'].edge_index = torch.vstack([torch.randint()])  # [2, num_edges]
-        # data['project', 'to', 'institution'].edge_index = project2org_edge_index
-        # data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
-        # data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
-
         # view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid'), ('project', 'to', 'institution'), ('institution', 'to', 'project')]
         view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid')]
         view_2 = [('openid', 'to', 'qimei36'), ('qimei36', 'to', 'openid')]
