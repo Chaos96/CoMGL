@@ -6,16 +6,17 @@ import torch
 class BaseOptions():
     def get_arguments(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('--exp_mode', type=str, default='node_prediction', choices=['link_prediction', 
+        parser.add_argument('--exp_mode', type=str, default='link_prediction', choices=['link_prediction', 
         'node_prediction'])
         parser.add_argument('--dataset', type=str, default='openid', choices=['dblp', 'mag', 'openid'])
         parser.add_argument('--data_path', type=str, default='~/public_data/pyg_data/')
         parser.add_argument('--auxiliary_view_num', type=int, default=2)
-        parser.add_argument('--train_on_subgraph', type=bool, default=True)
-        parser.add_argument('--generate_edges', type=bool, default=False)
-        parser.add_argument('--use_view_1', type=bool, default=False)
+        parser.add_argument('--train_on_subgraph', default=True, action="store_false")
+        parser.add_argument('--generate_edges', default=False, action="store_true")
+        parser.add_argument('--use_view_1', default=False, action="store_true")
 
         # training hyperparameter
+        parser.add_argument('--cuda', default=True, action="store_false")  
         parser.add_argument('--runs', type=int, default=1)  
         parser.add_argument('--epochs', type=int, default=150)
         parser.add_argument('--lr', type=float, default=0.001)

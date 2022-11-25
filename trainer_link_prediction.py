@@ -1,4 +1,5 @@
 import time
+from tqdm import tqdm
 
 import numpy as np
 import torch
@@ -26,7 +27,7 @@ class trainer():
 
         u_type, v_type = args.u_type, args.v_type
         
-        for batch_data in data_loader:         
+        for batch_data in tqdm(data_loader):         
             batch_size = batch_data[args.u_type].batch_size    
             batch_data = batch_data.to(args.device)
             model.optimizer.zero_grad()
@@ -37,7 +38,7 @@ class trainer():
 
             # auxiliary views negative sampling
             for idx, view in enumerate(args.view_dict[1:]): 
-                edge_type = view[1]
+                edge_type = view[0]
                 v_type = edge_type[2]
                 num_nodes = [batch_data.x_dict[args.u_type].size(0), batch_data.x_dict[v_type].size(0)]
                 batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)  
@@ -50,7 +51,7 @@ class trainer():
             # auxiliary views' construction loss
             edge_loss_aux = 0
             for idx, view in enumerate(args.view_dict[1:]): 
-                edge_type = view[1]
+                edge_type = view[0]
                 v_type = edge_type[2]
                 edge_label_index_aux, edge_label_aux = batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label
                 edge_label_aux = F.one_hot(edge_label_aux.long(), num_classes=2)
@@ -78,14 +79,14 @@ class trainer():
         self.model.encoder.eval()
         self.model.predictor.eval()
 
-        for batch_data in data_loader:
+        for batch_data in tqdm(data_loader):  
             batch_size = batch_data[args.u_type].batch_size  
             batch_data = batch_data.to(args.device)
 
-            num_nodes = [batch_data.x_dict[args.u_type].size(-1), batch_data.x_dict[args.v_type].size(-1)]
+            num_nodes = [batch_data.x_dict[args.u_type].size(0), batch_data.x_dict[args.v_type].size(0)]
             edge_label_index, edge_label = batch_get_neg_edges(batch_data[args.edge_type].edge_index[:, :1000], num_nodes=num_nodes)
             for idx, view in enumerate(args.view_dict[1:]):  # auxiliary views
-                edge_type = view[1]
+                edge_type = view[0]
                 v_type = edge_type[2]
                 num_nodes = [batch_data.x_dict[args.u_type].size(0), batch_data.x_dict[v_type].size(0)]
                 batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)
@@ -98,7 +99,7 @@ class trainer():
             y = edge_label.cpu().numpy()
             y_pred = logits.squeeze().cpu().detach().numpy()
 
-        return roc_auc_score(y, y_pred), average_precision_score(y, y_pred)
+        return roc_auc_score(y, y_pred[:, 1]), average_precision_score(y, y_pred[:, 1])
 
     def main(self):
         args = self.args   
@@ -138,7 +139,10 @@ class trainer():
             # model.param_init()
             start_time = time.time()
             for epoch in range(1, 1 + args.epochs):
+                print(f'Train: ')
                 loss = self.batch_train(train_loader)
+                print(f'Val: ')
                 val_auc, val_ap = self.test(val_loader)
+                print(f'Test: ')
                 auc, ap = self.test(test_loader)
-                print(f'epoch: {epoch}, loss: {loss:.4f}, val_auc: {val_auc:.4f}, val_ap: {val_ap:.4f}, auc: {auc:.4f}, ap: {ap:.4f}')
+                print(f'epoch: {epoch}, loss: {loss:.4f}, val_auc: {val_auc:.4f}, val_ap: {val_ap:.4f}, auc: {auc:.4f}, ap: {ap:.4f}\n')

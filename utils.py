@@ -146,11 +146,11 @@ def load_dataset(args):
 
         num_openid = max([num_openid_1, num_openid_2, num_openid_3])
 
-        num_openid_features = 128
-        num_project_features = 128
-        num_institution_features = 128
-        num_qimei36_features = 128
-        num_uin_features = 128
+        num_openid_features = args.embed_size
+        num_project_features = args.embed_size
+        num_institution_features = args.embed_size
+        num_qimei36_features = args.embed_size
+        num_uin_features = args.embed_size
         data['openid'].x = torch.randn(num_openid, num_openid_features)
         data['openid'].y = torch.randint(0, 2, (num_openid, ))
         data['project'].x = torch.randn(num_project, num_project_features)
@@ -160,10 +160,16 @@ def load_dataset(args):
 
         # Create an edge type "(author, writes, paper)" and building the
         # graph connectivity:
+
         data['openid', 'to', 'project'].edge_index = openid2project_edge_index  # [2, num_edges]
         data['project', 'to', 'institution'].edge_index = project2org_edge_index
         data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
         data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
+
+        # data['openid', 'to', 'project'].edge_index = torch.vstack([torch.randint()])  # [2, num_edges]
+        # data['project', 'to', 'institution'].edge_index = project2org_edge_index
+        # data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
+        # data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
 
         # view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid'), ('project', 'to', 'institution'), ('institution', 'to', 'project')]
         view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid')]
@@ -179,11 +185,11 @@ def load_dataset(args):
         args.node_class_num = 2   # main view 节点预测类别数
 
         # 保持原始特征维度与后续auxiliary views的表征维度一致，对预测结果影响待定...
-        with torch.no_grad():
-            for item in data.metadata()[0]:
-                if data.x_dict[item].size(1) != args.embed_size:
-                    rand_weight = torch.Tensor(data.x_dict[item].size(1), args.embed_size).uniform_(-0.5, 0.5)
-                    data[item].x = data.x_dict[item] @ rand_weight
+        # with torch.no_grad():
+        #     for item in data.metadata()[0]:
+        #         if data.x_dict[item].size(1) != args.embed_size:
+        #             rand_weight = torch.Tensor(data.x_dict[item].size(1), args.embed_size).uniform_(-0.5, 0.5)
+        #             data[item].x = data.x_dict[item] @ rand_weight
         
         data[args.v_type].nid = torch.arange(data[args.v_type].x.size(0)).reshape(-1, 1)
         v_emb = data[args.v_type].x.clone()  # record authors'embedding during training for inductive settings
@@ -202,9 +208,9 @@ def load_dataset(args):
         train_loader = NeighborLoader(
             train_data,
             # Sample 30 neighbors for each node and edge type for 2 iterations
-            num_neighbors={key: [3] * 2 for key in train_data.edge_types},
+            num_neighbors={key: [15] * 2 for key in train_data.edge_types},
             # Use a batch size of 128 for sampling training nodes of type paper
-            batch_size=20 ,
+            batch_size=args.batch_size,
             input_nodes=(args.u_type, train_data[args.u_type].train_mask),
         )
 
@@ -212,7 +218,7 @@ def load_dataset(args):
         val_loader = NeighborLoader(
             val_data,
             num_neighbors={key: [15] * 2 for key in val_data.edge_types},
-            batch_size=1024,
+            batch_size=args.batch_size,
             input_nodes=(args.u_type, mask),
         )
 
@@ -220,7 +226,7 @@ def load_dataset(args):
         test_loader = NeighborLoader(
             test_data,
             num_neighbors={key: [15] * 2 for key in test_data.edge_types},
-            batch_size=1024,
+            batch_size=args.batch_size,
             input_nodes=(args.u_type, mask),
         )
         return train_loader, val_loader, test_loader, v_emb
@@ -263,7 +269,7 @@ def add_delete_edges(data, view_dict, noise_ratio):
 
 def get_subgraph(data, mask, view_dict):
     u_type = data.u_type  
-    data[u_type].x = data.x_dict[u_type][mask]
+    
     for view in view_dict:
         for edge_type in view:
             if edge_type[0] == u_type:
@@ -275,6 +281,7 @@ def get_subgraph(data, mask, view_dict):
             edge_index, _ = bipartite_subgraph(subset, data.edge_index_dict[edge_type], relabel_nodes=True)
             data[edge_type].edge_index = edge_index
 
+    data[u_type].x = data.x_dict[u_type][mask]
     return data
 
 def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num_val=0.1, num_test=0.1):

@@ -11,7 +11,7 @@ from utils import assign_free_gpus
 def set_seed(args):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    if torch.cuda.is_available(): 
+    if args.cuda and torch.cuda.is_available(): 
         torch.cuda.manual_seed(args.seed)
         torch.cuda.manual_seed_all(args.seed)
         os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_idx)
@@ -22,12 +22,14 @@ def set_seed(args):
 def main():
     args = BaseOptions().get_arguments()
     print(args)
-    if torch.cuda.is_available(): 
+    if args.cuda and torch.cuda.is_available(): 
         gpus_to_use = assign_free_gpus()
         args.cuda_idx = int(gpus_to_use[0])
+        args.device = torch.device(f'cuda:{args.cuda_idx}' if torch.cuda.is_available() else torch.device('cpu'))
+    else:
+        args.device = torch.device('cpu')
     set_seed(args)
-    args.device = torch.device(f'cuda:{args.cuda_idx}' if torch.cuda.is_available() else torch.device('cpu'))
-        # args.device = device = torch.device('cpu')
+    
     print(args.device)
 
     if args.exp_mode == 'link_prediction':

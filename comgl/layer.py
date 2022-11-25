@@ -64,7 +64,7 @@ class SelfAttention(nn.Module):
         dist = torch.softmax(dist, dim=-1)  # batch, n, n
 
         att = torch.bmm(dist, v).sum(axis=1)
-        return att, att
+        return z, att
 
 
 class Uncertrainty_estimate(nn.Module):
