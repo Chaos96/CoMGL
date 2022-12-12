@@ -1,17 +1,20 @@
 import os
+import os.path as osp
 import time
 import subprocess
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from torch_geometric.data import HeteroData
 from torch_geometric.datasets import DBLP, OGB_MAG
 from torch_geometric.loader import NeighborLoader
-from torch_geometric.transforms import (AddMetaPaths, RandomLinkSplit,
-                                        RandomNodeSplit)
-from torch_geometric.utils import bipartite_subgraph
-from ogb.nodeproppred import Evaluator
+from torch_geometric.transforms import AddMetaPaths, ToUndirected
+from torch_geometric.utils import bipartite_subgraph, degree
+from torch_geometric.utils.num_nodes import maybe_num_nodes
 import torch
+import torch_cluster
+from torch import Tensor
 
 
 def assign_free_gpus(threshold_vram_usage=10000, max_gpus=2, wait=False, sleep_time=10):
@@ -78,15 +81,15 @@ def load_dataset(args):
         for view in view_dict:
             data[view[0]].edge_index = torch.flipud(data.edge_index_dict[view[1]]) # directed -> undirected
         
-        if os.path.exists('./data/mag_processed.pt'):
+        if os.path.exists('~/public_data/pyg_data/mag_processed.pt'):
             print('load data successfully !')
-            data = torch.load('../data/mag_processed.pt')
+            data = torch.load('~/public_data/pyg_data/mag_processed.pt')
         else:
             metapaths = [[view_1[0], view_2_[1]], [view_2_[0], view_1[1]]]
             data = AddMetaPaths(metapaths)(data)
             del data[view_2_[0]]
             del data[view_2_[1]]
-            torch.save(data, './data/mag_processed.pt')
+            torch.save(data, '~/public_data/pyg_data/mag_processed.pt')
 
         view_2 = [('institution', 'metapath_1', 'paper'), ('paper', 'metapath_0', 'institution')]  # Generate new edge type around paper
         args.view_dict = view_dict = [view_1, view_2, view_3]
@@ -112,34 +115,41 @@ def load_dataset(args):
     else:
         data = HeteroData()
 
-        path_1 = 'data/openid/openid2projectid.csv'
-        path_2 = 'data/openid/openid2q36.csv'
-        path_3 = 'data/openid/openid2uin.csv'
+        edge_index_path_1 = osp.join(args.data_path, 'openid2projectid.csv')
+        edge_index_path_2 = osp.join(args.data_path, 'openid2q36.csv')
+        edge_index_path_3 = osp.join(args.data_path, 'openid2uin.csv')
+        project_fea_path = osp.join(args.data_path, 'project.csv')
+        uin_fea_path = osp.join(args.data_path, 'uin.csv')
+        qimei36_fea_path = osp.join(args.data_path, 'qimei36.csv')
+ 
+        edge_index_1 = pd.read_csv(edge_index_path_1)
+        edge_index_2 = pd.read_csv(edge_index_path_2)
+        edge_index_3 = pd.read_csv(edge_index_path_3)
+        project_fea = pd.read_csv(project_fea_path).values
+        uin_fea = pd.read_csv(uin_fea_path).values
+        qimei36_fea = pd.read_csv(qimei36_fea_path).values
 
-        data_1 = pd.read_csv(path_1)
-        data_2 = pd.read_csv(path_2)
-        data_3 = pd.read_csv(path_3)
-        openid_index, openid_map = pd.factorize(data_1['open_id'])
+        openid_index, openid_map = pd.factorize(edge_index_1['open_id'])
         num_openid_1 = len(openid_map)
-        project_index, project_map = pd.factorize(data_1['proj_id'])
+        project_index, project_map = pd.factorize(edge_index_1['proj_id'])
         num_project = len(project_map)
-        org_index, org_map = pd.factorize(data_1['org_id'])
+        org_index, org_map = pd.factorize(edge_index_1['org_id'])
         num_institution = len(org_map)
         openid2project_edge_index = np.vstack([openid_index, project_index])
         openid2project_edge_index = torch.tensor(openid2project_edge_index, dtype=torch.long)
         project2org_edge_index = np.vstack([project_index, org_index])
         project2org_edge_index = torch.tensor(project2org_edge_index, dtype=torch.long)
 
-        openid_index, openid_map = pd.factorize(data_2['open_id'])
+        openid_index, openid_map = pd.factorize(edge_index_2['open_id'])
         num_openid_2 = len(openid_map)
-        qimei36_index, qimei36_map = pd.factorize(data_2['qimei36'])
+        qimei36_index, qimei36_map = pd.factorize(edge_index_2['qimei36'])
         num_qimei36 = len(qimei36_map)
         openid2qimei36_edge_index = np.vstack([openid_index, qimei36_index])
         openid2qimei36_edge_index = torch.tensor(openid2qimei36_edge_index, dtype=torch.long)
 
-        openid_index, openid_map = pd.factorize(data_3['open_id'])
+        openid_index, openid_map = pd.factorize(edge_index_3['open_id'])
         num_openid_3 = len(openid_map)
-        uin_index, uin_map = pd.factorize(data_3['uin'])
+        uin_index, uin_map = pd.factorize(edge_index_3['uin'])
         num_uin = len(uin_map)
         openid2uin_edge_index = np.vstack([openid_index, uin_index])
         openid2uin_edge_index = torch.tensor(openid2uin_edge_index, dtype=torch.long)
@@ -152,11 +162,13 @@ def load_dataset(args):
         num_qimei36_features = args.embed_size
         num_uin_features = args.embed_size
         data['openid'].x = torch.randn(num_openid, num_openid_features)
+        data['openid'].x_2 = torch.randn(num_openid, num_openid_features)
+        data['openid'].x_3 = torch.randn(num_openid, num_openid_features)
         data['openid'].y = torch.randint(0, 2, (num_openid, ))
-        data['project'].x = torch.randn(num_project, num_project_features)
+        data['project'].x = torch.tensor(project_fea, dtype=torch.float)
         data['institution'].x = torch.rand(num_institution, num_institution_features)
-        data['qimei36'].x = torch.randn(num_qimei36, num_qimei36_features)
-        data['uin'].x = torch.randn(num_uin, num_uin_features)
+        data['qimei36'].x = torch.tensor(qimei36_fea, dtype=torch.float)
+        data['uin'].x = torch.tensor(uin_fea, dtype=torch.float)
 
         # Create an edge type "(author, writes, paper)" and building the
         # graph connectivity:
@@ -166,17 +178,18 @@ def load_dataset(args):
         data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
         data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
 
+        # Add reverse edge type for each view
+        data = ToUndirected()(data)
+
         # view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid'), ('project', 'to', 'institution'), ('institution', 'to', 'project')]
         view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid')]
         view_2 = [('openid', 'to', 'qimei36'), ('qimei36', 'to', 'openid')]
         view_3 = [('openid', 'to', 'uin'), ('uin', 'to', 'openid')]
         args.view_dict = view_dict = [view_1, view_2, view_3]
 
-        for view in view_dict:
-            data[view[1]].edge_index = torch.flipud(data.edge_index_dict[view[0]]) # directed -> undirected
 
         args.u_type = data.u_type = 'openid'
-        args.v_type = data.v_type = 'project'   # main view 的两种节点类型
+        args.v_type = data.v_type = 'project'   # main view 核心任务的两种节点类型
         args.node_class_num = 2   # main view 节点预测类别数
 
         # 保持原始特征维度与后续auxiliary views的表征维度一致，对预测结果影响待定...
@@ -200,49 +213,95 @@ def load_dataset(args):
     train_data = add_delete_edges(train_data, view_dict=view_dict, noise_ratio=args.noise_ratio)
 
     if args.train_on_subgraph:
+        mask = torch.ones(train_data[args.u_type].x.size(0), dtype=torch.bool)
         train_loader = NeighborLoader(
             train_data,
             # Sample 30 neighbors for each node and edge type for 2 iterations
-            num_neighbors={key: [15] * 2 for key in train_data.edge_types},
+            num_neighbors={key: [10] * 2 for key in train_data.edge_types},
             # Use a batch size of 128 for sampling training nodes of type paper
             batch_size=args.batch_size,
-            input_nodes=(args.u_type, train_data[args.u_type].train_mask),
+            input_nodes=(args.u_type, mask),
+            num_workers=4
         )
 
-        mask = torch.ones(val_data[args.u_type].x.size(0), dtype=torch.bool)
         val_loader = NeighborLoader(
             val_data,
             num_neighbors={key: [15] * 2 for key in val_data.edge_types},
             batch_size=args.batch_size,
-            input_nodes=(args.u_type, mask),
+            input_nodes=(args.u_type, val_data[args.u_type].mask),
         )
 
-        mask = torch.ones(test_data[args.u_type].x.size(0), dtype=torch.bool)
         test_loader = NeighborLoader(
             test_data,
             num_neighbors={key: [15] * 2 for key in test_data.edge_types},
             batch_size=args.batch_size,
-            input_nodes=(args.u_type, mask),
+            input_nodes=(args.u_type, test_data[args.u_type].mask),
         )
         return train_loader, val_loader, test_loader, v_emb
 
     return train_data, val_data, test_data, v_emb
 
-def filter_edges(edge_index, node_mask, loc=0):
-    node_set = node_mask.nonzero()
-    mask = torch.isin(edge_index[loc], node_set)
-    return edge_index[:, mask]
+def negative_sampling(data, edge_type, rev_edge_type, num_nodes, ratio):
+    edge_index = data[edge_type].edge_index
+    rev_edge_index = data[rev_edge_type].edge_index
+    num_edges = edge_index.size(-1)
+    num_pos_edges = int(num_edges * ratio)
+    if ratio < 1:
+        mask = torch.ones(num_edges, dtype=torch.bool)
+        perm = torch.randperm(num_edges)[:num_pos_edges]
+        mask[perm] = False
+        pos_edges = edge_index[:, ~mask]
+    else:
+        pos_edges = edge_index
 
-def negative_sampling(edge_index, u_set, v_set, ratio=1):
-    size = int(edge_index.size(-1) * ratio)
-    row = np.random.choice(u_set, size=size).reshape(1, -1)
-    col = np.random.choice(v_set, size=size).reshape(1, -1)
+    if isinstance(num_nodes[0], int):
+        u_set, v_set = np.arange(num_nodes[0]), np.arange(num_nodes[1])
+    else:
+        u_set, v_set = num_nodes[0], num_nodes[1]
+    row = np.random.choice(u_set, size=num_pos_edges).reshape(1, -1)
+    col = np.random.choice(v_set, size=num_pos_edges).reshape(1, -1)
     neg_edge_index = torch.cat([torch.tensor(row), torch.tensor(col)], dim=0).to(edge_index)
-    edge_label_index = torch.cat([edge_index, neg_edge_index], dim=1)
-    edge_label = torch.cat([torch.ones(edge_index.size(-1)), torch.zeros(neg_edge_index.size(-1))], dim=0)
-    return edge_label_index, edge_label
+    split = {'pos_edge': pos_edges, 'neg_edge': neg_edge_index}
+    # edge_label_index = torch.cat([pos_edges, neg_edge_index], dim=1)
+    # edge_label = torch.cat([torch.ones(num_pos_edges), torch.zeros(num_pos_edges)], dim=0)
+
+    if ratio < 1:
+        data[edge_type].edge_index = edge_index[:, mask]
+        data[rev_edge_type].edge_index = torch.flipud(data[edge_type].edge_index)
+
+    data[edge_type].split = split
+
+    # rev_num_edges = rev_edge_index.size(-1)
+    # rev_mask = (pos_edges.repeat(rev_num_edges, 1).reshape(num_pos_edges, rev_num_edges, 2) == rev_edge_index).sum(dim=2).sum(dim=0) == 0
+    # data[rev_edge_type].edge_index = data[rev_edge_type].edge_index[rev_mask]
+    return data
+
+def global_negative_sampling(args, data, ratio=[1, 0.2]):
+    u_type, v_type = data.u_type, data.v_type
+    edge_type, rev_edge_type = args.edge_type, args.rev_edge_type
+
+    # main view进行负采样
+    num_nodes = [data.x_dict[u_type].size(0), data.x_dict[v_type].size(0)]
+    data = negative_sampling(data, edge_type, rev_edge_type, num_nodes=num_nodes, ratio=ratio[0])
+
+    # auxiliary views' negative sampling
+    for idx, view in enumerate(args.view_dict[1:]):  
+        if args.dataset == 'mag':
+            rev_edge_type, edge_type = view[0], view[1]
+        else:
+            edge_type, rev_edge_type = view[0], view[1]
+        v_type_aux = edge_type[2]
+        num_nodes = [data.x_dict[u_type].size(0), data.x_dict[v_type_aux].size(0)]
+        data = negative_sampling(data, edge_type, rev_edge_type, num_nodes=num_nodes, ratio=ratio[1]) 
+
+    return data       
 
 def add_delete_edges(data, view_dict, noise_ratio):
+    if noise_ratio > 0:
+        print(f'noise type: add edges, ratio: {noise_ratio}')
+    elif noise_ratio < 0:
+        print(f'noise type: delete edges, ratio: {noise_ratio}')
+
     for view in view_dict:
         for edge_type in view:
             edge_index = data.edge_index_dict[edge_type]
@@ -254,10 +313,10 @@ def add_delete_edges(data, view_dict, noise_ratio):
             
             else:
                 loc = 0 if edge_type[0]==data.u_type else 1
-                paper_set = torch.unique(edge_index[loc]).numpy()
+                u_set = torch.unique(edge_index[loc]).numpy()
                 v_type = edge_type[2] if loc==0 else edge_type[0]
                 v_set = np.arange(data.x_dict[v_type].size(0))
-                edge_index, _ = negative_sampling(edge_index, paper_set, v_set, ratio=noise_ratio)
+                edge_index, _ = negative_sampling(edge_index, [u_set, v_set], size=noise_ratio)
                 data.edge_index_dict[edge_type] = edge_index
 
     return data
@@ -270,13 +329,21 @@ def get_subgraph(data, mask, view_dict):
             if edge_type[0] == u_type:
                 v_set = torch.arange(data.x_dict[edge_type[2]].size(0))  # 只对paper/user 节点进行分割，其他节点全部保留
                 subset = (mask.nonzero(), v_set)
-            else:
+            elif edge_type[2] == u_type:
                 u_set = torch.arange(data.x_dict[edge_type[0]].size(0))
                 subset = (u_set, mask.nonzero())
+            else:
+                continue
             edge_index, _ = bipartite_subgraph(subset, data.edge_index_dict[edge_type], relabel_nodes=True)
             data[edge_type].edge_index = edge_index
 
     data[u_type].x = data.x_dict[u_type][mask]
+    data[u_type].y = data[u_type].y[mask]
+    data[u_type].year = data[u_type].year[mask]
+    del data[u_type].train_mask 
+    del data[u_type].test_mask 
+    del data[u_type].val_mask
+    data[u_type].mask = torch.ones(len(data[u_type].x), dtype=torch.bool)   # reindex the mask
     return data
 
 def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num_val=0.1, num_test=0.1):
@@ -307,14 +374,15 @@ def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num
 
     # Eliminate redundant edges to satisfy "inductive" and "strict cold start" scenarios, only for view 1.
     print(f'the num of train data edges: {train_data[edge_type].edge_index.size(-1)}  -->', end="  ")
-    train_data[edge_type].edge_index = filter_edges(train_data[edge_type].edge_index, train_data[u_type].train_mask, 0)
-    train_data[rev_edge_type].edge_index = filter_edges(train_data[rev_edge_type].edge_index, train_data[u_type].train_mask, 1)
-    # train_data = get_subgraph(train_data, train_data['paper'].train_mask, view_dict[1:])
+    train_data = get_subgraph(train_data, train_data['paper'].train_mask, view_dict)
     print(f'{train_data[edge_type].edge_index.size(-1)}')
 
-
+    print(f'the num of val data edges: {val_data[edge_type].edge_index.size(-1)}  -->', end="  ")
     val_data = get_subgraph(val_data, val_data[u_type].val_mask, view_dict)
+    print(f'{val_data[edge_type].edge_index.size(-1)}')
 
+    print(f'the num of test data edges: {test_data[edge_type].edge_index.size(-1)}  -->', end="  ")
     test_data = get_subgraph(test_data, test_data[u_type].test_mask, view_dict)
+    print(f'{test_data[edge_type].edge_index.size(-1)}')
 
     return train_data, val_data, test_data

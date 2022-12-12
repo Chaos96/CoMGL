@@ -22,37 +22,22 @@ class trainer():
     def batch_train(self, data_loader):
         args = self.args
         model = self.model
-        model.encoder.train()
-        model.aggregator.train()
-        model.predictor.train()
+        model.train()
 
         u_type, v_type = args.u_type, args.v_type
         
         for batch_data in data_loader:  
             batch_size = batch_data[u_type].batch_size       
             batch_data = batch_data.to(args.device)
+            x_dict = batch_data.x_dict
             model.optimizer.zero_grad()
 
-            # main view's negative sampling
-            num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[v_type].size(0)]
-            edge_label_index, edge_label = batch_get_neg_edges(batch_data[args.edge_type].edge_index, num_nodes=num_nodes)
-            batch_data[args.edge_type].edge_label_index, batch_data[args.edge_type].edge_label = edge_label_index, edge_label
-
-            # auxiliary views' negative sampling
-            for idx, view in enumerate(args.view_dict[1:]):  
-                if args.dataset == 'mag':
-                    edge_type = view[1]
-                else:
-                    edge_type = view[0]
-                v_type_aux = edge_type[2]
-                num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[v_type_aux].size(0)]
-                batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)        
+            # 各个view 进行边的负采样
+            batch_data = global_negative_sampling(args, batch_data)
 
             # 聚合auxiliary views中的paper embedding
-            z, paper_emb = model.aggregator(model, batch_data, args.view_dict)
-            v_emb = model.encoder[0](batch_data.x_dict, batch_data.edge_index_dict)[v_type]
-            v_nid = batch_data[args.v_type].nid.squeeze()
-            self.global_v_emb[v_nid] = v_emb.detach().cpu()  # 记录训练阶段的v emb
+            z, u_emb = model.aggregator(model, batch_data, args.view_dict)
+            x_dict[u_type] = u_emb
 
             # auxiliary views' construction loss
             edge_loss_aux = 0
@@ -69,16 +54,21 @@ class trainer():
 
             # candidate edges generate
             if args.generate_edges:
+                v_emb = x_dict[v_type]
                 edge_label_index, edge_label = batch_data[args.edge_type].edge_label_index, batch_data[args.edge_type].edge_label
-                edge_label = F.one_hot(edge_label.long())
-                logits = model.predictor[0](paper_emb, v_emb, edge_label_index).sigmoid()
+                edge_label = F.one_hot(edge_label.long(), num_classes=2)
+                logits = model.predictor[0](u_emb, v_emb, edge_label_index)
                 edge_loss = F.binary_cross_entropy_with_logits(logits, edge_label.to(logits))
+            
+            v_emb = model.encoder[0](x_dict, batch_data.edge_index_dict)[v_type]
+            v_nid = batch_data[args.v_type].nid.squeeze()
+            self.global_v_emb[v_nid] = v_emb.detach().cpu()  # 记录训练阶段的v emb
                 
             if args.dataset == 'dblp':
                 logits = model.predictor[-1](v_emb)
                 y = batch_data[u_type].y
             else:
-                logits = model.predictor[-1](paper_emb)
+                logits = model.predictor[-1](u_emb)
                 y = batch_data[u_type].y
 
             label_loss = F.cross_entropy(logits[:batch_size], y[:batch_size].to(args.device))
@@ -117,29 +107,23 @@ class trainer():
                 num_edges = 1000
                 edge_index_candidate = get_candidate_edges(num_nodes=num_nodes, num_edges=num_edges)    # main view 
 
-                # auxiliary views negative sampling
-                for idx, view in enumerate(args.view_dict[1:]):  
-                    if args.dataset == 'mag':
-                        edge_type = view[1]
-                    else:
-                        edge_type = view[0]
-                    v_type_aux = edge_type[2]
-                    num_nodes = [batch_data.x_dict[u_type].size(0), batch_data.x_dict[v_type_aux].size(0)]
-                    batch_data[edge_type].edge_label_index, batch_data[edge_type].edge_label = batch_get_neg_edges(batch_data[edge_type].edge_index, num_nodes=num_nodes)       
+                 # 各个view 进行边的负采样
+                batch_data = global_negative_sampling(args, batch_data, main_view=False)
 
                 z, u_emb = model.aggregator(model, batch_data, args.view_dict)
-                v_nid = batch_data[v_type].nid.squeeze()
-                global_v_emb = self.global_v_emb[v_nid].to(args.device)
+                # v_nid = batch_data[v_type].nid.squeeze()
+                # global_v_emb = self.global_v_emb[v_nid].to(args.device)
 
                 if args.generate_edges:
-                    logits = model.predictor[0](u_emb, global_v_emb, edge_index_candidate)
+                    logits = model.predictor[0](u_emb, global_v_emb, edge_index_candidate).sigmoid()
                     logits = F.gumbel_softmax(logits, tau=0.01, hard=True)
                     edge_index = edge_index_candidate.to(args.device) * logits[:, 1].long()
                     batch_data[args.edge_type].edge_index = edge_index
                     batch_data[args.rev_edge_type].edge_index = torch.flipud(edge_index)
 
                     x_dict_ = batch_data.x_dict
-                    x_dict_[u_type], x_dict_[v_type] = u_emb.to(args.device), global_v_emb.to(args.device)
+                    # x_dict_[u_type], x_dict_[v_type] = u_emb.to(args.device), global_v_emb.to(args.device)
+                    x_dict_[u_type] = u_emb.to(args.device)
                     x_dict_ = model.encoder[0](x_dict_, batch_data.edge_index_dict)
 
                     u_emb = x_dict_[u_type]
@@ -194,7 +178,6 @@ class trainer():
             start_time = time.time()
             for epoch in range(1, 1 + args.epochs):
                 loss = self.batch_train(train_loader)
-                print(loss)
                 val_acc = self.batch_test(val_loader)
                 test_acc = self.batch_test(test_loader)
                 print(f'epoch: {epoch}, loss: {loss:.4f}, val_acc: {val_acc:.4f}, test_acc: {test_acc:.4f}')

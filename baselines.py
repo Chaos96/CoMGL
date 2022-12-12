@@ -16,6 +16,8 @@ from utils import *
 from evaluate import Evaluator
 
 
+model = MLPPredictor(2, 128, 128, )
+
 class trainer(): 
     def __init__(self, args):
         self.args = args    
@@ -91,8 +93,8 @@ class trainer():
 
                 split = batch_data[args.edge_type].split
                 pos_edge, neg_edge = split['pos_edge'], split['neg_edge']
-                pos_pred = model.predictor[0](u_emb, v_emb, pos_edge.to(args.device)).sigmoid()
-                neg_pred = model.predictor[0](u_emb, v_emb, neg_edge.to(args.device)).sigmoid()
+                pos_pred = model.predictor[0](u_emb, v_emb, pos_edge.to(args.device))
+                neg_pred = model.predictor[0](u_emb, v_emb, neg_edge.to(args.device))
 
         eval_metric = args.eval_metric
         if eval_metric == 'hits':
@@ -180,4 +182,4 @@ class trainer():
                 print(f'Test: ')
                 test_results = self.test(test_loader, evaluator)
                 if args.eval_metric == 'ROC-AUC':
-                    print(f"epoch: {epoch}, loss: {loss:.4f}, val: {val_results['rocauc']:.3f}, test: {test_results['rocauc']}\n")
+                    print(f"epoch: {epoch}, loss: {loss:.4f}, val: {val_results['rocauc']:.3f}, test: {test_results['rocauc']:.3f}\n")

@@ -53,6 +53,7 @@ class CoMGL(nn.Module):
                                     hidden_channels=gnn_hidden_channels,
                                     num_layers=gnn_num_layers,
                                     dropout=dropout))
+        
         self.aggregator = create_aggregator_layer(aggregator_name=args.aggregator_name,
                                                 hidden_channels=args.agg_hidden_channels,
                                                 auxiliary_view_num=args.auxiliary_view_num,
@@ -60,7 +61,7 @@ class CoMGL(nn.Module):
 
         self.predictor = create_predictor_layer(input_channels=gnn_hidden_channels,
                                                 hidden_channels=mlp_hidden_channels,
-                                                out_channels=[2, args.node_class_num],
+                                                out_channels=[1, args.node_class_num],
                                                 num_layers=mlp_num_layers,
                                                 dropout=dropout,
                                                 predictor_name=predictor_name)
@@ -94,6 +95,8 @@ def create_aggregator_layer(hidden_channels, aggregator_name='Uncertainty', auxi
         return Uncertrainty_estimate()
     elif aggregator_name == 'ATTENTION':
         return SelfAttention(hidden_channels, hidden_channels, hidden_channels)
+    elif aggregator_name == 'ADD':
+        return Add()
 
 
 def create_predictor_layer(input_channels, hidden_channels, out_channels, num_layers, dropout=0., predictor_name='MLP', auxiliary_task_num=2):

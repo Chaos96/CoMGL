@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .utils import batch_get_neg_edges, calculate_weight
+from .utils import calculate_weight
 
 class DotPredictor(nn.Module):
     def __init__(self) -> None:
@@ -18,22 +18,23 @@ class DotPredictor(nn.Module):
 class MLPPredictor(nn.Module):
     def __init__(self, mlp_num_layers, input_channels, mlp_hidden_channels, out_channels, dropout) -> None:
         super().__init__()
-        self.lins = nn.ModuleList()
-        self.lins.append(nn.Linear(input_channels, mlp_hidden_channels))
-        self.lins.append(nn.Linear(input_channels, mlp_hidden_channels))
-        for layer in range(1, mlp_num_layers-1):
-            self.lins.append(nn.Linear(mlp_hidden_channels, mlp_hidden_channels))
-            self.lins.append(nn.Linear(mlp_hidden_channels, mlp_hidden_channels))
-        self.lins.append(nn.Linear(mlp_hidden_channels, out_channels))
+        self.lins_u, self.lins_v = nn.ModuleList(), nn.ModuleList()
+        self.lins_u.append(nn.Linear(input_channels, mlp_hidden_channels))
+        self.lins_v.append(nn.Linear(input_channels, mlp_hidden_channels))
+        for _ in range(1, mlp_num_layers-1):
+            self.lins_u.append(nn.Linear(mlp_hidden_channels, mlp_hidden_channels))
+            self.lins_v.append(nn.Linear(mlp_hidden_channels, mlp_hidden_channels))
+        self.lins = nn.Linear(mlp_hidden_channels, out_channels)
 
         self.dropout = nn.Dropout(dropout)
     
     def forward(self, u_emb, v_emb, edge_index):
         u, v = u_emb[edge_index[0]], v_emb[edge_index[1]]
-        for i in range(len(self.lins) // 2):
-            u, v = self.lins[i](u).relu(), self.lins[i+1](v).relu()
-        z = self.dropout(u + v)
-        z = self.lins[-1](z)
+        for i in range(len(self.lins_u)):
+            u, v = self.lins_u[i](u).relu(), self.lins_v[i](v).relu()
+            u, v = self.dropout(u), self.dropout(v)
+        z = u + v
+        z = self.lins(z)
         return z
     
 class SelfAttention(nn.Module):
@@ -98,4 +99,15 @@ class Uncertrainty_estimate(nn.Module):
 
         z = model.encode_aux(data.x_dict, data.edge_index_dict, len(view_dict) - 1)
         paper_emb = z[0][u_type] + z[1][u_type]
+        return z, paper_emb
+
+class Add(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def forward(self, model, data, view_dict):
+        u_type = data.u_type
+        paper_fea = data.x_dict[u_type]
+        z = model.encode_aux(data.x_dict, data.edge_index_dict)
+        paper_emb = z[0][u_type] + z[1][u_type] + paper_fea
         return z, paper_emb
