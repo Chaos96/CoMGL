@@ -158,45 +158,41 @@ def load_dataset(args):
         qimei36_fea = pd.read_csv(qimei36_fea_path).values
 
         openid_index, openid_map = pd.factorize(edge_index_1['open_id'])
-        num_openid_1 = len(openid_map)
-        project_index, project_map = pd.factorize(edge_index_1['proj_id'])
-        num_project = len(project_map)
-        org_index, org_map = pd.factorize(edge_index_1['org_id'])
-        num_institution = len(org_map)
+        num_openid = len(openid_map)
+        openid_map = dict(zip(openid_map, openid_index))
+        project_index, project_map = pd.factorize(project_fea.iloc[:, 0])
+        project_map = dict(zip(project_map, project_index))
+        project_index = [project_map[i] for i in edge_index_1['proj_id']]
         openid2project_edge_index = np.vstack([openid_index, project_index])
         openid2project_edge_index = torch.tensor(openid2project_edge_index, dtype=torch.long)
-        # project2org_edge_index = np.vstack([project_index, org_index])
-        # project2org_edge_index = torch.tensor(project2org_edge_index, dtype=torch.long)
+        org_index, org_map = pd.factorize(edge_index_1['org_id'])
+        num_institution = len(org_map)
 
-        openid_index, openid_map = pd.factorize(edge_index_2['open_id'])
-        num_openid_2 = len(openid_map)
-        qimei36_index, qimei36_map = pd.factorize(edge_index_2['qimei36'])
-        num_qimei36 = len(qimei36_map)
+        openid_index = [openid_map[i] for i in edge_index_2['open_id']]
+        qimei36_index, qimei36_map = pd.factorize(qimei36_fea.iloc[:, 0])
+        qimei36_map = dict(zip(qimei36_map, qimei36_index))
+        qimei36_index = [qimei36_map[i] for i in edge_index_2['qimei36']]
         openid2qimei36_edge_index = np.vstack([openid_index, qimei36_index])
         openid2qimei36_edge_index = torch.tensor(openid2qimei36_edge_index, dtype=torch.long)
 
-        openid_index, openid_map = pd.factorize(edge_index_3['open_id'])
-        num_openid_3 = len(openid_map)
-        uin_index, uin_map = pd.factorize(edge_index_3['uin'])
-        num_uin = len(uin_map)
+        openid_index = [openid_map[i] for i in edge_index_3['open_id']]
+        uin_index, uin_map = pd.factorize(uin_fea.iloc[:, 0])
+        uin_map = dict(zip(uin_map, uin_index))
+        uin_index = [uin_map[i] for i in edge_index_3['uin']]
         openid2uin_edge_index = np.vstack([openid_index, uin_index])
         openid2uin_edge_index = torch.tensor(openid2uin_edge_index, dtype=torch.long)
 
-        num_openid = max([num_openid_1, num_openid_2, num_openid_3])
-
+    
         num_openid_features = args.embed_size
-        num_project_features = args.embed_size
         num_institution_features = args.embed_size
-        num_qimei36_features = args.embed_size
-        num_uin_features = args.embed_size
         data['openid'].x = torch.randn(num_openid, num_openid_features)
         data['openid'].x2 = torch.randn(num_openid, num_openid_features)
         data['openid'].x3 = torch.randn(num_openid, num_openid_features)
         data['openid'].y = torch.randint(0, 2, (num_openid, ))
-        data['project'].x = torch.tensor(project_fea, dtype=torch.float)
+        data['project'].x = torch.tensor(project_fea.values[:, 1:], dtype=torch.float)
         data['institution'].x = torch.rand(num_institution, num_institution_features)
-        data['qimei36'].x = torch.tensor(qimei36_fea, dtype=torch.float)
-        data['uin'].x = torch.tensor(uin_fea, dtype=torch.float)
+        data['qimei36'].x = torch.tensor(qimei36_fea.values[:, 1:], dtype=torch.float)
+        data['uin'].x = torch.tensor(uin_fea.values[:, 1:], dtype=torch.float)
 
         # Create an edge type "(author, writes, paper)" and building the
         # graph connectivity:
