@@ -8,8 +8,8 @@ class BaseOptions():
         parser = argparse.ArgumentParser()
         parser.add_argument('--exp_mode', type=str, default='link_prediction', choices=['link_prediction', 
         'node_prediction'])
-        parser.add_argument('--dataset', type=str, default='mag', choices=['dblp', 'mag', 'openid'])
-        parser.add_argument('--data_path', type=str, default='~/public_data/pyg_data/')
+        parser.add_argument('--dataset', type=str, default='openid', choices=['dblp', 'mag', 'openid'])
+        parser.add_argument('--data_path', type=str, default='/home/shenzhen/public_data/pyg_data')
         parser.add_argument('--auxiliary_view_num', type=int, default=2)
         parser.add_argument('--train_on_subgraph', default=True, action="store_false")
         parser.add_argument('--generate_edges', default=False, action="store_true")
@@ -20,7 +20,7 @@ class BaseOptions():
         parser.add_argument('--runs', type=int, default=1)  
         parser.add_argument('--epochs', type=int, default=150)
         parser.add_argument('--lr', type=float, default=0.001)
-        parser.add_argument('--batch_size', type=int, default=10*1024)    
+        parser.add_argument('--batch_size', type=int, default=1024)    
         parser.add_argument('--noise_ratio', type=float, default=0.0)     # auxiliary views' info noise ratio      
         parser.add_argument('--eval_steps', type=int, default=1)
         parser.add_argument('--loss_func_name', type=str, default='ce_loss', choices=['AUC', 'ce_loss', 'log_rank_loss', 'info_nce_loss'])

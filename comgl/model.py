@@ -6,12 +6,6 @@ import torch_geometric.nn as pygnn
 from .layer import *
 from .utils import *
 
-def calculate_weight(weight, y_pred, edge_index, loc=1):
-    from torch_scatter import scatter_mean
-    idx = edge_index[loc, :].max() + 1
-    weight[:idx] = scatter_mean(y_pred, edge_index[loc, :])
-    return weight
-
 class GNNEncoder(torch.nn.Module):
     def __init__(self, view, metadata, hidden_channels, num_layers, dropout):
         super().__init__()

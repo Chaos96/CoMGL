@@ -4,6 +4,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .utils import calculate_weight
 
+def get_x_dict(data):
+    x_dict = data.x_dict
+    x_dict['openid_view_2'] = data['openid'].x2
+    x_dict['openid_view_3'] = data['openid'].x3
+    return x_dict
+
+def get_edge_index_dict(data):
+    edge_index_dict = data.edge_index_dict.copy()
+    edge_index_dict[('openid_view_2', 'to', 'qimei36')] = data.edge_index_dict[('openid', 'to', 'qimei36')]
+    edge_index_dict[('qimei36', 'rev_to', 'openid_view_2')] = data.edge_index_dict[('qimei36', 'rev_to', 'openid')]
+    edge_index_dict[('openid_view_3', 'to', 'uin')] = data.edge_index_dict[('openid', 'to', 'uin')]
+    edge_index_dict[('uin', 'rev_to', 'openid_view_3')] = data.edge_index_dict[('uin', 'rev_to', 'openid')]
+    del edge_index_dict[('openid', 'to', 'qimei36')]
+    del edge_index_dict[('qimei36', 'rev_to', 'openid')]
+    del edge_index_dict[('openid', 'to', 'uin')]
+    del edge_index_dict[('uin', 'rev_to', 'openid')]
+    return edge_index_dict
+
 class DotPredictor(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -107,7 +125,16 @@ class Add(nn.Module):
     
     def forward(self, model, data, view_dict):
         u_type = data.u_type
-        paper_fea = data.x_dict[u_type]
-        z = model.encode_aux(data.x_dict, data.edge_index_dict)
-        paper_emb = z[0][u_type] + z[1][u_type] + paper_fea
-        return z, paper_emb
+        u_fea = data.x_dict[u_type]
+        if u_type.startswith('openid'):
+            x_dict = get_x_dict(data)
+            edge_index_dict = get_edge_index_dict(data)
+        else:
+            x_dict = data.x_dict
+            edge_index_dict = data.edge_index_dict
+        z = model.encode_aux(x_dict, edge_index_dict)
+        if u_type.startswith('openid'):
+            u_emb = z[0]['openid_view_2'] + z[1]['openid_view_3'] # + u_fea
+        else:
+            u_emb = z[0][u_type] + z[1][u_type] + u_fea
+        return z, u_emb

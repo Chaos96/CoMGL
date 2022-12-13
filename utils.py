@@ -16,6 +16,34 @@ import torch
 import torch_cluster
 from torch import Tensor
 
+def get_metadata(data):
+    metadata = []
+    metadata.append(data.metadata()[0])
+    metadata[0].append('openid_view_2')
+    metadata[0].append('openid_view_3')
+    edge_index_key = [('openid', 'to', 'project'), ('project', 'rev_to', 'openid'), ('openid_view_2', 'to', 'qimei36'), ('qimei36', 'rev_to', 'openid_view_2'), ('openid_view_3', 'to', 'uin'), ('uin', 'rev_to', 'openid_view_3')]
+    metadata.append(edge_index_key)
+
+    return metadata
+
+def get_x_dict(data):
+    x_dict = data.x_dict
+    x_dict['openid_view_2'] = data['openid'].x2
+    x_dict['openid_view_3'] = data['openid'].x3
+    return x_dict
+
+def get_edge_index_dict(data):
+    edge_index_dict = data.edge_index_dict.copy()
+    edge_index_dict[('openid_view_2', 'to', 'qimei36')] = data.edge_index_dict[('openid', 'to', 'qimei36')]
+    edge_index_dict[('qimei36', 'rev_to', 'openid_view_2')] = data.edge_index_dict[('qimei36', 'rev_to', 'openid')]
+    edge_index_dict[('openid_view_3', 'to', 'uin')] = data.edge_index_dict[('openid', 'to', 'uin')]
+    edge_index_dict[('uin', 'rev_to', 'openid_view_3')] = data.edge_index_dict[('uin', 'rev_to', 'openid')]
+    del edge_index_dict[('openid', 'to', 'qimei36')]
+    del edge_index_dict[('qimei36', 'rev_to', 'openid')]
+    del edge_index_dict[('openid', 'to', 'uin')]
+    del edge_index_dict[('uin', 'rev_to', 'openid')]
+    return edge_index_dict
+
 
 def assign_free_gpus(threshold_vram_usage=10000, max_gpus=2, wait=False, sleep_time=10):
     """
@@ -115,12 +143,12 @@ def load_dataset(args):
     else:
         data = HeteroData()
 
-        edge_index_path_1 = osp.join(args.data_path, 'openid2projectid.csv')
-        edge_index_path_2 = osp.join(args.data_path, 'openid2q36.csv')
-        edge_index_path_3 = osp.join(args.data_path, 'openid2uin.csv')
-        project_fea_path = osp.join(args.data_path, 'project.csv')
-        uin_fea_path = osp.join(args.data_path, 'uin.csv')
-        qimei36_fea_path = osp.join(args.data_path, 'qimei36.csv')
+        edge_index_path_1 = osp.join(args.data_path, 'openid/openid2projectid.csv')
+        edge_index_path_2 = osp.join(args.data_path, 'openid/openid2q36.csv')
+        edge_index_path_3 = osp.join(args.data_path, 'openid/openid2uin.csv')
+        project_fea_path = osp.join(args.data_path, 'openid/project.csv')
+        uin_fea_path = osp.join(args.data_path, 'openid/puin.csv')
+        qimei36_fea_path = osp.join(args.data_path, 'openid/qimei36.csv')
  
         edge_index_1 = pd.read_csv(edge_index_path_1)
         edge_index_2 = pd.read_csv(edge_index_path_2)
@@ -137,8 +165,8 @@ def load_dataset(args):
         num_institution = len(org_map)
         openid2project_edge_index = np.vstack([openid_index, project_index])
         openid2project_edge_index = torch.tensor(openid2project_edge_index, dtype=torch.long)
-        project2org_edge_index = np.vstack([project_index, org_index])
-        project2org_edge_index = torch.tensor(project2org_edge_index, dtype=torch.long)
+        # project2org_edge_index = np.vstack([project_index, org_index])
+        # project2org_edge_index = torch.tensor(project2org_edge_index, dtype=torch.long)
 
         openid_index, openid_map = pd.factorize(edge_index_2['open_id'])
         num_openid_2 = len(openid_map)
@@ -162,8 +190,8 @@ def load_dataset(args):
         num_qimei36_features = args.embed_size
         num_uin_features = args.embed_size
         data['openid'].x = torch.randn(num_openid, num_openid_features)
-        data['openid'].x_2 = torch.randn(num_openid, num_openid_features)
-        data['openid'].x_3 = torch.randn(num_openid, num_openid_features)
+        data['openid'].x2 = torch.randn(num_openid, num_openid_features)
+        data['openid'].x3 = torch.randn(num_openid, num_openid_features)
         data['openid'].y = torch.randint(0, 2, (num_openid, ))
         data['project'].x = torch.tensor(project_fea, dtype=torch.float)
         data['institution'].x = torch.rand(num_institution, num_institution_features)
@@ -174,7 +202,7 @@ def load_dataset(args):
         # graph connectivity:
 
         data['openid', 'to', 'project'].edge_index = openid2project_edge_index  # [2, num_edges]
-        data['project', 'to', 'institution'].edge_index = project2org_edge_index
+        # data['project', 'to', 'institution'].edge_index = project2org_edge_index
         data['openid', 'to', 'qimei36'].edge_index = openid2qimei36_edge_index
         data['openid', 'to', 'uin'].edge_index = openid2uin_edge_index 
 
@@ -182,10 +210,13 @@ def load_dataset(args):
         data = ToUndirected()(data)
 
         # view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid'), ('project', 'to', 'institution'), ('institution', 'to', 'project')]
-        view_1 = [('openid', 'to', 'project'), ('project', 'to', 'openid')]
-        view_2 = [('openid', 'to', 'qimei36'), ('qimei36', 'to', 'openid')]
-        view_3 = [('openid', 'to', 'uin'), ('uin', 'to', 'openid')]
+        view_1 = [('openid', 'to', 'project'), ('project', 'rev_to', 'openid')]
+        view_2 = [('openid', 'to', 'qimei36'), ('qimei36', 'rev_to', 'openid')]
+        view_3 = [('openid', 'to', 'uin'), ('uin', 'rev_to', 'openid')]
         args.view_dict = view_dict = [view_1, view_2, view_3]
+        view_2_ = [('openid_view_2', 'to', 'qimei36'), ('qimei36', 'rev_to', 'openid_view_2')]
+        view_3_ = [('openid_view_3', 'to', 'uin'), ('uin', 'rev_to', 'openid_view_3')]
+        args.multi_view_dict = [view_1, view_2_, view_3_]   # openid 数据集比较特殊，oepnid在不同view的特征不同
 
 
         args.u_type = data.u_type = 'openid'
@@ -204,13 +235,16 @@ def load_dataset(args):
 
     # main view's edge_type
     args.edge_type = edge_type = view_1[0]
-    args.rev_edge_type = rev_edge_type = view_1[1]   
-    args.metadata = data.metadata()
+    args.rev_edge_type = rev_edge_type = view_1[1]
+    if args.dataset == 'openid':
+        args.metadata = get_metadata(data)
+    else:
+        args.metadata = data.metadata()
 
     print(data)
     train_data, val_data, test_data = get_data_split(data, edge_type, rev_edge_type, view_dict)
 
-    train_data = add_delete_edges(train_data, view_dict=view_dict, noise_ratio=args.noise_ratio)
+    # train_data = add_delete_edges(train_data, view_dict=view_dict, noise_ratio=args.noise_ratio)
 
     if args.train_on_subgraph:
         mask = torch.ones(train_data[args.u_type].x.size(0), dtype=torch.bool)
@@ -241,9 +275,9 @@ def load_dataset(args):
 
     return train_data, val_data, test_data, v_emb
 
-def negative_sampling(data, edge_type, rev_edge_type, num_nodes, ratio):
-    edge_index = data[edge_type].edge_index
-    rev_edge_index = data[rev_edge_type].edge_index
+def negative_sampling(data, edge_index_dict, edge_type, rev_edge_type, num_nodes, ratio):
+    edge_index = edge_index_dict[edge_type]
+    rev_edge_index = edge_index_dict[rev_edge_type]
     num_edges = edge_index.size(-1)
     num_pos_edges = int(num_edges * ratio)
     if ratio < 1:
@@ -266,8 +300,8 @@ def negative_sampling(data, edge_type, rev_edge_type, num_nodes, ratio):
     # edge_label = torch.cat([torch.ones(num_pos_edges), torch.zeros(num_pos_edges)], dim=0)
 
     if ratio < 1:
-        data[edge_type].edge_index = edge_index[:, mask]
-        data[rev_edge_type].edge_index = torch.flipud(data[edge_type].edge_index)
+        edge_index_dict[edge_type] = edge_index[:, mask]
+        edge_index_dict[rev_edge_type] = torch.flipud(edge_index_dict[edge_type])
 
     data[edge_type].split = split
 
@@ -281,18 +315,21 @@ def global_negative_sampling(args, data, ratio=[1, 0.2]):
     edge_type, rev_edge_type = args.edge_type, args.rev_edge_type
 
     # main view进行负采样
+    edge_index_dict = get_edge_index_dict(data)
     num_nodes = [data.x_dict[u_type].size(0), data.x_dict[v_type].size(0)]
-    data = negative_sampling(data, edge_type, rev_edge_type, num_nodes=num_nodes, ratio=ratio[0])
+    data = negative_sampling(data, edge_index_dict, edge_type, rev_edge_type, num_nodes=num_nodes, ratio=ratio[0])
 
     # auxiliary views' negative sampling
-    for idx, view in enumerate(args.view_dict[1:]):  
+    view_dict = args.multi_view_dict
+    
+    for idx, view in enumerate(view_dict[1:]):  
         if args.dataset == 'mag':
             rev_edge_type, edge_type = view[0], view[1]
         else:
             edge_type, rev_edge_type = view[0], view[1]
         v_type_aux = edge_type[2]
         num_nodes = [data.x_dict[u_type].size(0), data.x_dict[v_type_aux].size(0)]
-        data = negative_sampling(data, edge_type, rev_edge_type, num_nodes=num_nodes, ratio=ratio[1]) 
+        data = negative_sampling(data, edge_index_dict, edge_type, rev_edge_type, num_nodes=num_nodes, ratio=ratio[1]) 
 
     return data       
 
@@ -338,8 +375,10 @@ def get_subgraph(data, mask, view_dict):
             data[edge_type].edge_index = edge_index
 
     data[u_type].x = data.x_dict[u_type][mask]
+    if u_type.startswith('openid'):
+        data[u_type].x2 = data[u_type].x2[mask]
+        data[u_type].x3 = data[u_type].x3[mask]
     data[u_type].y = data[u_type].y[mask]
-    data[u_type].year = data[u_type].year[mask]
     del data[u_type].train_mask 
     del data[u_type].test_mask 
     del data[u_type].val_mask
@@ -374,7 +413,7 @@ def get_data_split(data, edge_type, rev_edge_type, view_dict, num_train=0.8, num
 
     # Eliminate redundant edges to satisfy "inductive" and "strict cold start" scenarios, only for view 1.
     print(f'the num of train data edges: {train_data[edge_type].edge_index.size(-1)}  -->', end="  ")
-    train_data = get_subgraph(train_data, train_data['paper'].train_mask, view_dict)
+    train_data = get_subgraph(train_data, train_data[u_type].train_mask, view_dict)
     print(f'{train_data[edge_type].edge_index.size(-1)}')
 
     print(f'the num of val data edges: {val_data[edge_type].edge_index.size(-1)}  -->', end="  ")

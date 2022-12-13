@@ -26,6 +26,11 @@ class trainer():
         model.train()
         
         loss_record = []
+
+        if args.u_type.startswith('openid'):
+            view_dict = args.multi_view_dict
+        else:
+            view_dict = args.view_dict
         for batch_data in tqdm(data_loader, leave=False):         
             batch_size = batch_data[args.u_type].batch_size    
             batch_data = batch_data.to(args.device)
@@ -33,7 +38,7 @@ class trainer():
 
             batch_data = global_negative_sampling(args, batch_data, ratio=[1, 0.2])
 
-            z, u_emb = model.aggregator(model, batch_data, args.view_dict)
+            z, u_emb = model.aggregator(model, batch_data, view_dict)
             v_emb = batch_data.x_dict[args.v_type]
             # v_emb = model.encoder[0](batch_data.x_dict, batch_data.edge_index_dict)[args.v_type]
             # v_nid = batch_data[args.v_type].nid.squeeze()
@@ -41,17 +46,18 @@ class trainer():
 
             # auxiliary views' construction loss
             edge_loss_aux = 0
-            for idx, view in enumerate(args.view_dict[1:]): 
+            for idx, view in enumerate(view_dict[1:]): 
                 if args.u_type == 'paper':
                     edge_type = view[1]
                 else:
                     edge_type = view[0]
+                u_type = args.u_type + '_view_' + str(idx+2)
                 v_type = edge_type[2]
                 split = batch_data[edge_type].split
                 pos_edge, neg_edge = split['pos_edge'], split['neg_edge']
                 num_neg = neg_edge.size(-1)
-                pos_out = model.predictor[idx+1](z[idx][args.u_type], z[idx][v_type], pos_edge.to(args.device))
-                neg_out = model.predictor[idx+1](z[idx][args.u_type], z[idx][v_type], neg_edge.to(args.device))
+                pos_out = model.predictor[idx+1](z[idx][u_type], z[idx][v_type], pos_edge.to(args.device))
+                neg_out = model.predictor[idx+1](z[idx][u_type], z[idx][v_type], neg_edge.to(args.device))
                 edge_loss_aux += self.calculate_loss(pos_out, neg_out, num_neg)
 
             split = batch_data[args.edge_type].split
@@ -77,6 +83,10 @@ class trainer():
         model.eval()
 
         u_type, v_type = args.u_type, args.v_type
+        if u_type.startswith('openid'):
+            view_dict = args.multi_view_dict
+        else:
+            view_dict = args.view_dict
         with torch.no_grad():
             for batch_data in tqdm(data_loader, leave=False):  
                 batch_size = batch_data[args.u_type].batch_size  
@@ -144,9 +154,13 @@ class trainer():
         if args.train_on_subgraph:
             train_loader, val_loader, test_loader, self.global_v_emb = load_dataset(args)
 
+        if args.dataset == 'openid':
+            view_dict = args.multi_view_dict
+        else:
+            view_dict = args.view_dict
         model = CoMGL(
             args,
-            view_dict=args.view_dict,
+            view_dict=view_dict,
             predictor_name=args.predictor_name,
             lr=args.lr,
             dropout=args.dropout,
