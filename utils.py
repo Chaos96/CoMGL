@@ -153,15 +153,15 @@ def load_dataset(args):
         edge_index_1 = pd.read_csv(edge_index_path_1)
         edge_index_2 = pd.read_csv(edge_index_path_2)
         edge_index_3 = pd.read_csv(edge_index_path_3)
-        project_fea = pd.read_csv(project_fea_path).values
-        uin_fea = pd.read_csv(uin_fea_path).values
-        qimei36_fea = pd.read_csv(qimei36_fea_path).values
+        project_fea = pd.read_csv(project_fea_path)
+        uin_fea = pd.read_csv(uin_fea_path)
+        qimei36_fea = pd.read_csv(qimei36_fea_path)
 
         openid_index, openid_map = pd.factorize(edge_index_1['open_id'])
         num_openid = len(openid_map)
-        openid_map = dict(zip(openid_map, openid_index))
+        openid_map = dict(zip(openid_map.unique(), np.unique(openid_index)))
         project_index, project_map = pd.factorize(project_fea.iloc[:, 0])
-        project_map = dict(zip(project_map, project_index))
+        project_map = dict(zip(project_map.unique(), np.unique(project_index)))
         project_index = [project_map[i] for i in edge_index_1['proj_id']]
         openid2project_edge_index = np.vstack([openid_index, project_index])
         openid2project_edge_index = torch.tensor(openid2project_edge_index, dtype=torch.long)
@@ -170,14 +170,14 @@ def load_dataset(args):
 
         openid_index = [openid_map[i] for i in edge_index_2['open_id']]
         qimei36_index, qimei36_map = pd.factorize(qimei36_fea.iloc[:, 0])
-        qimei36_map = dict(zip(qimei36_map, qimei36_index))
+        qimei36_map = dict(zip(qimei36_map.unique(), np.unique(qimei36_index)))
         qimei36_index = [qimei36_map[i] for i in edge_index_2['qimei36']]
         openid2qimei36_edge_index = np.vstack([openid_index, qimei36_index])
         openid2qimei36_edge_index = torch.tensor(openid2qimei36_edge_index, dtype=torch.long)
 
         openid_index = [openid_map[i] for i in edge_index_3['open_id']]
         uin_index, uin_map = pd.factorize(uin_fea.iloc[:, 0])
-        uin_map = dict(zip(uin_map, uin_index))
+        uin_map = dict(zip(uin_map.unique(), np.unique(uin_index)))
         uin_index = [uin_map[i] for i in edge_index_3['uin']]
         openid2uin_edge_index = np.vstack([openid_index, uin_index])
         openid2uin_edge_index = torch.tensor(openid2uin_edge_index, dtype=torch.long)
